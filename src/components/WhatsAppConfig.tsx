@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
-import { WhatsApp } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import NewsService from "@/services/NewsService";
 import { WhatsAppConfig as WhatsAppConfigType } from "@/types/news";
 
@@ -141,7 +140,7 @@ const WhatsAppConfig = () => {
                 onClick={handleTestWhatsApp}
                 className="flex items-center"
               >
-                <WhatsApp className="h-4 w-4 mr-2" />
+                <MessageCircle className="h-4 w-4 mr-2" />
                 Probar conexión
               </Button>
             </div>
