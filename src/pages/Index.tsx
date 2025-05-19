@@ -36,15 +36,32 @@ const Index = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const filteredNews = NewsService.searchNews(searchQuery);
-    setNews(filteredNews);
+    fetchSearchResults();
   };
 
-  const filteredNews = searchQuery 
-    ? news.filter(item => 
+  const fetchSearchResults = async () => {
+    setLoading(true);
+    try {
+      const filteredNews = await NewsService.searchNews(searchQuery);
+      setNews(filteredNews);
+    } catch (error) {
+      console.error("Error searching news:", error);
+      setNews([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Make sure filteredNews is always initialized as an array
+  // This prevents the "news.filter is not a function" error
+  const filteredNews = Array.isArray(news) ? 
+    (searchQuery && !loading ? 
+      news.filter(item => 
         item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        item.summary.toLowerCase().includes(searchQuery.toLowerCase()))
-    : news;
+        item.summary.toLowerCase().includes(searchQuery.toLowerCase())
+      ) 
+      : news) 
+    : [];
 
   return (
     <div className="container mx-auto px-4 py-8">

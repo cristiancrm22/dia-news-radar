@@ -114,23 +114,28 @@ class NewsService {
     // and combine the results. For now, we'll just filter the mock data.
     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
     
-    const lowerCaseQuery = query.toLowerCase();
-    let filteredNews = mockNews.filter(
-      item => 
-        item.title.toLowerCase().includes(lowerCaseQuery) || 
-        item.summary.toLowerCase().includes(lowerCaseQuery) ||
-        item.topics.some(topic => topic.toLowerCase().includes(lowerCaseQuery))
-    );
-    
-    // If source is specified, filter by source
-    if (source) {
-      const lowerCaseSource = source.toLowerCase();
-      filteredNews = filteredNews.filter(
-        item => item.sourceName.toLowerCase().includes(lowerCaseSource)
+    try {
+      const lowerCaseQuery = query.toLowerCase();
+      let filteredNews = mockNews.filter(
+        item => 
+          item.title.toLowerCase().includes(lowerCaseQuery) || 
+          item.summary.toLowerCase().includes(lowerCaseQuery) ||
+          item.topics.some(topic => topic.toLowerCase().includes(lowerCaseQuery))
       );
+      
+      // If source is specified, filter by source
+      if (source) {
+        const lowerCaseSource = source.toLowerCase();
+        filteredNews = filteredNews.filter(
+          item => item.sourceName.toLowerCase().includes(lowerCaseSource)
+        );
+      }
+      
+      return filteredNews;
+    } catch (error) {
+      console.error("Error filtering news:", error);
+      return []; // Return empty array on error to prevent filter issues
     }
-    
-    return filteredNews;
   }
 
   // Get sources from localStorage or defaults
@@ -238,28 +243,33 @@ class NewsService {
 
   // Parse WhatsApp message to search for news
   static async processWhatsAppMessage(message: string): Promise<NewsItem[]> {
-    message = message.trim().toLowerCase();
-    
-    if (message === "noticias") {
-      // Return all recent news
-      return this.getNews();
-    }
-    
-    if (message.startsWith("noticias:")) {
-      const query = message.substring("noticias:".length).trim();
+    try {
+      message = message.trim().toLowerCase();
       
-      // Check if the query includes a source specification
-      if (query.includes(" de ")) {
-        const [topic, source] = query.split(" de ", 2);
-        return this.searchNews(topic.trim(), source.trim());
+      if (message === "noticias") {
+        // Return all recent news
+        return this.getNews();
       }
       
-      // Otherwise just search for the topic
-      return this.searchNews(query);
+      if (message.startsWith("noticias:")) {
+        const query = message.substring("noticias:".length).trim();
+        
+        // Check if the query includes a source specification
+        if (query.includes(" de ")) {
+          const [topic, source] = query.split(" de ", 2);
+          return this.searchNews(topic.trim(), source.trim());
+        }
+        
+        // Otherwise just search for the topic
+        return this.searchNews(query);
+      }
+      
+      // Return empty array for unrecognized commands
+      return [];
+    } catch (error) {
+      console.error("Error processing WhatsApp message:", error);
+      return []; // Return empty array on error to prevent filter issues
     }
-    
-    // Return empty array for unrecognized commands
-    return [];
   }
 }
 

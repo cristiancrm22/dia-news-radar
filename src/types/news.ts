@@ -28,6 +28,6 @@ export interface WhatsAppConfig {
   enabled: boolean;
   phoneNumber: string;
   apiKey?: string;
-  connectionMethod: "official" | "evolution";
+  connectionMethod: "official" | "evolution" | "businesscloud";
   evolutionApiUrl?: string;
 }
