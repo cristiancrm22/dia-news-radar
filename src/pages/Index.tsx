@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search } from "lucide-react";
+import { Search, RefreshCw } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
 import TopicsConfig from "@/components/TopicsConfig";
@@ -27,8 +28,17 @@ const Index = () => {
     try {
       const fetchedNews = await NewsService.getNews();
       setNews(fetchedNews);
+      toast({
+        title: "Noticias actualizadas",
+        description: `Se cargaron ${fetchedNews.length} noticias`,
+      });
     } catch (error) {
       console.error("Error fetching news:", error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las noticias",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -40,13 +50,36 @@ const Index = () => {
   };
 
   const fetchSearchResults = async () => {
+    if (!searchQuery.trim()) {
+      fetchNews();
+      return;
+    }
+    
     setLoading(true);
     try {
+      console.log(`Buscando noticias con términos: "${searchQuery}"`);
       const filteredNews = await NewsService.searchNews(searchQuery);
       setNews(filteredNews);
+      
+      if (filteredNews.length === 0) {
+        toast({
+          title: "Sin resultados",
+          description: `No se encontraron noticias con el término "${searchQuery}"`,
+        });
+      } else {
+        toast({
+          title: "Búsqueda completada",
+          description: `Se encontraron ${filteredNews.length} noticias con el término "${searchQuery}"`,
+        });
+      }
     } catch (error) {
       console.error("Error searching news:", error);
       setNews([]);
+      toast({
+        title: "Error",
+        description: "Error al buscar noticias",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -54,14 +87,7 @@ const Index = () => {
 
   // Make sure filteredNews is always initialized as an array
   // This prevents the "news.filter is not a function" error
-  const filteredNews = Array.isArray(news) ? 
-    (searchQuery && !loading ? 
-      news.filter(item => 
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        item.summary.toLowerCase().includes(searchQuery.toLowerCase())
-      ) 
-      : news) 
-    : [];
+  const filteredNews = Array.isArray(news) ? news : [];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -83,7 +109,7 @@ const Index = () => {
         </TabsList>
 
         <TabsContent value="noticias">
-          <div className="flex items-center mb-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center mb-6 gap-4">
             <form onSubmit={handleSearch} className="flex w-full max-w-lg gap-2">
               <Input
                 type="text"
@@ -99,9 +125,11 @@ const Index = () => {
             </form>
             <Button 
               variant="outline" 
-              className="ml-4"
+              className="flex gap-2"
               onClick={fetchNews}
+              disabled={loading}
             >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Actualizar
             </Button>
           </div>
@@ -121,6 +149,15 @@ const Index = () => {
           ) : (
             <div className="text-center py-12">
               <p className="text-gray-500">No se encontraron noticias para la búsqueda</p>
+              {searchQuery && (
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={fetchNews}
+                >
+                  Ver todas las noticias
+                </Button>
+              )}
             </div>
           )}
         </TabsContent>

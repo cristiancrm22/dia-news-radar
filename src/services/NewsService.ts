@@ -61,6 +61,26 @@ const mockNews: NewsItem[] = [
     sourceName: "Renewable Energy World",
     topics: ["Energía", "Medio Ambiente", "Tecnología"],
     imageUrl: "https://via.placeholder.com/300x200"
+  },
+  {
+    id: "7",
+    title: "Kicillof anuncia nuevo plan económico para la provincia",
+    summary: "El gobernador Axel Kicillof presentó un ambicioso plan económico que busca revitalizar la economía provincial y generar nuevos empleos en sectores estratégicos.",
+    date: new Date().toISOString(),
+    sourceUrl: "https://www.lanacion.com/economia/kicillof-plan",
+    sourceName: "La Nación",
+    topics: ["Economía", "Política", "Provincia"],
+    imageUrl: "https://via.placeholder.com/300x200"
+  },
+  {
+    id: "8",
+    title: "Debate político genera tensión entre el gobierno nacional y Kicillof",
+    summary: "El intercambio de declaraciones entre funcionarios del gobierno nacional y el gobernador Kicillof escaló la tensión política en medio de negociaciones por fondos para la provincia.",
+    date: new Date().toISOString(),
+    sourceUrl: "https://www.clarin.com/politica/tension-gobierno-kicillof",
+    sourceName: "Clarín",
+    topics: ["Política", "Gobierno"],
+    imageUrl: "https://via.placeholder.com/300x200"
   }
 ];
 
@@ -69,7 +89,9 @@ const defaultSources: NewsSource[] = [
   { id: "1", name: "El País", url: "https://elpais.com", enabled: true },
   { id: "2", name: "BBC News", url: "https://www.bbc.com", enabled: true },
   { id: "3", name: "CNN", url: "https://www.cnn.com", enabled: true },
-  { id: "4", name: "Twitter", url: "https://twitter.com", enabled: false }
+  { id: "4", name: "Twitter", url: "https://twitter.com", enabled: false },
+  { id: "5", name: "La Nación", url: "https://www.lanacion.com", enabled: true },
+  { id: "6", name: "Clarín", url: "https://www.clarin.com", enabled: true }
 ];
 
 // Default topics
@@ -116,12 +138,30 @@ class NewsService {
     
     try {
       const lowerCaseQuery = query.toLowerCase();
+      
+      // Mejorado: busca coincidencias parciales en cualquier parte del texto
       let filteredNews = mockNews.filter(
         item => 
           item.title.toLowerCase().includes(lowerCaseQuery) || 
           item.summary.toLowerCase().includes(lowerCaseQuery) ||
+          item.sourceName.toLowerCase().includes(lowerCaseQuery) ||
           item.topics.some(topic => topic.toLowerCase().includes(lowerCaseQuery))
       );
+      
+      console.log(`Búsqueda de "${query}" encontró ${filteredNews.length} resultados`);
+      
+      // Si no hay resultados, intentar buscar palabras individuales
+      if (filteredNews.length === 0 && lowerCaseQuery.includes(" ")) {
+        const queryWords = lowerCaseQuery.split(" ").filter(word => word.length > 2);
+        console.log("Intentando búsqueda por palabras individuales:", queryWords);
+        
+        filteredNews = mockNews.filter(item => {
+          const itemText = `${item.title.toLowerCase()} ${item.summary.toLowerCase()} ${item.topics.join(" ").toLowerCase()}`;
+          return queryWords.some(word => itemText.includes(word));
+        });
+        
+        console.log(`Búsqueda por palabras encontró ${filteredNews.length} resultados`);
+      }
       
       // If source is specified, filter by source
       if (source) {
@@ -262,6 +302,11 @@ class NewsService {
         
         // Otherwise just search for the topic
         return this.searchNews(query);
+      }
+      
+      // Si el mensaje no tiene un formato específico, intentar buscarlo como una consulta general
+      if (message.length > 0) {
+        return this.searchNews(message);
       }
       
       // Return empty array for unrecognized commands
