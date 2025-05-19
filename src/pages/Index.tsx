@@ -17,6 +17,7 @@ const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState("noticias");
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
   useEffect(() => {
     // Fetch news on component mount
@@ -25,6 +26,7 @@ const Index = () => {
 
   const fetchNews = async () => {
     setLoading(true);
+    setIsSearchActive(false);
     try {
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
@@ -57,6 +59,7 @@ const Index = () => {
     }
     
     setLoading(true);
+    setIsSearchActive(true);
     try {
       console.log(`Buscando noticias con términos: "${searchQuery}"`);
       const filteredNews = await NewsService.searchNews(searchQuery);
@@ -89,7 +92,7 @@ const Index = () => {
   };
 
   // Aseguramos que news siempre es un array para evitar errores
-  const filteredNews = Array.isArray(news) ? news : [];
+  const safeNews = Array.isArray(news) ? news : [];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -142,16 +145,20 @@ const Index = () => {
                 <div key={i} className="h-[220px] bg-gray-100 rounded-lg animate-pulse"></div>
               ))}
             </div>
-          ) : filteredNews.length > 0 ? (
+          ) : safeNews.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredNews.map((item) => (
+              {safeNews.map((item) => (
                 <NewsCard key={item.id} news={item} />
               ))}
             </div>
           ) : (
             <div className="text-center py-12">
-              <p className="text-gray-500">No se encontraron noticias para la búsqueda</p>
-              {searchQuery && (
+              <p className="text-gray-500">
+                {isSearchActive 
+                  ? `No se encontraron noticias para "${searchQuery}"`
+                  : "No hay noticias disponibles"}
+              </p>
+              {isSearchActive && (
                 <Button 
                   variant="outline" 
                   className="mt-4"

@@ -2,7 +2,7 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link, Globe } from "lucide-react";
+import { Link, Globe, ExternalLink } from "lucide-react";
 import { NewsItem } from "@/types/news";
 
 interface NewsCardProps {
@@ -10,16 +10,43 @@ interface NewsCardProps {
 }
 
 const NewsCard = ({ news }: NewsCardProps) => {
+  // Ensure URL has proper format
+  const getValidUrl = (url: string): string => {
+    try {
+      // Check if URL already has http/https
+      if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+      }
+      return new URL(url).toString();
+    } catch (error) {
+      console.error(`Invalid URL: ${url}`, error);
+      // Return a fallback URL or the original if parsing fails
+      return url;
+    }
+  };
+
+  // Format the date in a more readable way
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return dateString; // Return original if parsing fails
+    }
+  };
+
   return (
     <Card className="h-full flex flex-col hover:shadow-md transition-shadow duration-200">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start mb-2">
           <div className="text-sm text-muted-foreground">
-            {new Date(news.date).toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric'
-            })}
+            {formatDate(news.date)}
           </div>
           <Badge variant="outline" className="flex items-center">
             <Globe className="h-3 w-3 mr-1" />
@@ -30,10 +57,10 @@ const NewsCard = ({ news }: NewsCardProps) => {
       </CardHeader>
       <CardContent className="flex-grow">
         <CardDescription className="line-clamp-3">{news.summary}</CardDescription>
-        {news.topics.length > 0 && (
+        {news.topics && news.topics.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-3">
-            {news.topics.slice(0, 3).map((topic) => (
-              <Badge key={topic} variant="secondary" className="text-xs">
+            {news.topics.slice(0, 3).map((topic, idx) => (
+              <Badge key={`${topic}-${idx}`} variant="secondary" className="text-xs">
                 {topic}
               </Badge>
             ))}
@@ -42,13 +69,13 @@ const NewsCard = ({ news }: NewsCardProps) => {
       </CardContent>
       <CardFooter className="pt-2">
         <a 
-          href={news.sourceUrl} 
+          href={getValidUrl(news.sourceUrl)} 
           target="_blank" 
           rel="noopener noreferrer"
           className="w-full"
         >
           <Button variant="outline" className="w-full">
-            <Link className="h-4 w-4 mr-2" />
+            <ExternalLink className="h-4 w-4 mr-2" />
             Ver noticia original
           </Button>
         </a>
