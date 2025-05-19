@@ -27,13 +27,14 @@ const Index = () => {
     setLoading(true);
     try {
       const fetchedNews = await NewsService.getNews();
-      setNews(fetchedNews);
+      setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
       toast({
         title: "Noticias actualizadas",
         description: `Se cargaron ${fetchedNews.length} noticias`,
       });
     } catch (error) {
       console.error("Error fetching news:", error);
+      setNews([]);
       toast({
         title: "Error",
         description: "No se pudieron cargar las noticias",
@@ -59,7 +60,9 @@ const Index = () => {
     try {
       console.log(`Buscando noticias con términos: "${searchQuery}"`);
       const filteredNews = await NewsService.searchNews(searchQuery);
-      setNews(filteredNews);
+      
+      // Asegurarnos de que siempre tenemos un array
+      setNews(Array.isArray(filteredNews) ? filteredNews : []);
       
       if (filteredNews.length === 0) {
         toast({
@@ -85,8 +88,7 @@ const Index = () => {
     }
   };
 
-  // Make sure filteredNews is always initialized as an array
-  // This prevents the "news.filter is not a function" error
+  // Aseguramos que news siempre es un array para evitar errores
   const filteredNews = Array.isArray(news) ? news : [];
 
   return (
@@ -113,7 +115,7 @@ const Index = () => {
             <form onSubmit={handleSearch} className="flex w-full max-w-lg gap-2">
               <Input
                 type="text"
-                placeholder="Buscar noticias..."
+                placeholder="Buscar noticias (nombres, apellidos, palabras)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-grow"

@@ -1,14 +1,17 @@
+
+// Corrigiendo el error TS2322
+// Asegurarse de usar los tipos correctos para connectionMethod
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "@/components/ui/sonner";
-import { MessageCircle } from "lucide-react";
-import NewsService from "@/services/NewsService";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/use-toast";
 import { WhatsAppConfig as WhatsAppConfigType } from "@/types/news";
+import NewsService from "@/services/NewsService";
 
 const WhatsAppConfig = () => {
   const [config, setConfig] = useState<WhatsAppConfigType>({
@@ -19,302 +22,224 @@ const WhatsAppConfig = () => {
     evolutionApiUrl: ""
   });
   
-  const [isTesting, setIsTesting] = useState(false);
-  
+  const [testMessage, setTestMessage] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [sending, setSending] = useState(false);
+
   useEffect(() => {
-    // Load WhatsApp config on component mount
+    // Load config on component mount
     const savedConfig = NewsService.getWhatsAppConfig();
-    if (savedConfig) {
-      setConfig(savedConfig);
-    }
+    setConfig(savedConfig);
   }, []);
 
-  const handleToggleWhatsApp = () => {
-    const updatedConfig = { ...config, enabled: !config.enabled };
-    setConfig(updatedConfig);
-    NewsService.updateWhatsAppConfig(updatedConfig);
-    
-    toast.success(`Integración con WhatsApp ${updatedConfig.enabled ? 'activada' : 'desactivada'}`);
+  const handleEnabledChange = (enabled: boolean) => {
+    setConfig(prev => ({ ...prev, enabled }));
   };
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!config.phoneNumber) {
-      toast.error("Por favor ingrese un número de teléfono");
-      return;
-    }
-    
-    // Simple phone number validation
-    const phoneRegex = /^\+?[0-9]{10,15}$/;
-    if (!phoneRegex.test(config.phoneNumber)) {
-      toast.error("Por favor ingrese un número de teléfono válido");
-      return;
-    }
+  const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setConfig(prev => ({ ...prev, phoneNumber: e.target.value }));
+  };
 
-    if (config.connectionMethod === "evolution" && !config.evolutionApiUrl) {
-      toast.error("Por favor ingrese la URL de Evolution API");
-      return;
-    }
-    
-    // Test connection before saving if using Evolution API
-    if (config.connectionMethod === "evolution") {
-      try {
-        const isConnected = await testEvolutionApiConnection(config.evolutionApiUrl, config.apiKey);
-        if (!isConnected) {
-          toast.error("No se pudo conectar a Evolution API. Verifique la URL y la API Key");
-          return;
-        }
-      } catch (error) {
-        toast.error("Error al conectar con Evolution API");
-        console.error(error);
-        return;
-      }
-    }
-    
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setConfig(prev => ({ ...prev, apiKey: e.target.value }));
+  };
+
+  const handleConnectionMethodChange = (value: "official" | "evolution" | "businesscloud") => {
+    setConfig(prev => ({ ...prev, connectionMethod: value }));
+  };
+
+  const handleEvolutionApiUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setConfig(prev => ({ ...prev, evolutionApiUrl: e.target.value }));
+  };
+
+  const handleSaveConfig = () => {
     NewsService.updateWhatsAppConfig(config);
-    toast.success("Configuración de WhatsApp actualizada");
+    toast({
+      title: "Configuración guardada",
+      description: "La configuración de WhatsApp se ha guardado correctamente"
+    });
   };
 
-  const testEvolutionApiConnection = async (url: string, apiKey?: string): Promise<boolean> => {
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-      
-      const response = await fetch(`${url.trim()}/api/status`, {
-        method: 'GET',
-        headers
+  const handleTestMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setTestMessage(e.target.value);
+  };
+
+  const handleTestPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTestPhone(e.target.value);
+  };
+
+  const handleSendTestMessage = async () => {
+    if (!testMessage.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor ingrese un mensaje para enviar",
+        variant: "destructive"
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data && data.status === "success";
-      }
-      return false;
-    } catch (error) {
-      console.error("Error testing Evolution API connection:", error);
-      return false;
-    }
-  };
-
-  const handleTestWhatsApp = async () => {
-    if (!config.enabled) {
-      toast.error("La integración con WhatsApp está desactivada");
-      return;
-    }
-    
-    if (!config.phoneNumber) {
-      toast.error("Por favor configure un número de teléfono");
       return;
     }
 
-    setIsTesting(true);
-    
+    if (!testPhone.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor ingrese un número de teléfono",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSending(true);
     try {
-      // Attempt to send a test message
-      const testMessage = "Este es un mensaje de prueba del Radar de Noticias.";
+      const success = await NewsService.sendWhatsAppMessage(testPhone, testMessage);
       
-      if (config.connectionMethod === "evolution") {
-        if (!config.evolutionApiUrl) {
-          toast.error("URL de Evolution API no configurada");
-          setIsTesting(false);
-          return;
-        }
-        
-        const success = await sendTestMessageViaEvolutionApi(testMessage);
-        if (success) {
-          toast.success("Mensaje de prueba enviado correctamente a través de Evolution API");
-        } else {
-          toast.error("Error al enviar mensaje de prueba a través de Evolution API");
-        }
+      if (success) {
+        toast({
+          title: "Mensaje enviado",
+          description: `Mensaje enviado a ${testPhone}`
+        });
       } else {
-        // Send via official WhatsApp API
-        const success = await NewsService.sendWhatsAppMessage(config.phoneNumber, testMessage);
-        if (success) {
-          toast.success("Mensaje de prueba enviado a WhatsApp");
-        } else {
-          toast.error("Error al enviar mensaje de prueba a WhatsApp");
-        }
+        toast({
+          title: "Error",
+          description: "No se pudo enviar el mensaje a WhatsApp",
+          variant: "destructive"
+        });
       }
     } catch (error) {
-      console.error("Error testing WhatsApp connection:", error);
-      toast.error("Error al probar la conexión con WhatsApp");
-    } finally {
-      setIsTesting(false);
-    }
-  };
-  
-  const sendTestMessageViaEvolutionApi = async (message: string): Promise<boolean> => {
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      
-      if (config.apiKey) {
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      }
-      
-      const response = await fetch(`${config.evolutionApiUrl.trim()}/message/sendText/${config.phoneNumber}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          number: config.phoneNumber.replace('+', ''),
-          textMessage: message
-        })
+      console.error("Error sending test message:", error);
+      toast({
+        title: "Error",
+        description: "Error al enviar el mensaje de prueba",
+        variant: "destructive"
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data && data.status === "success";
-      }
-      return false;
-    } catch (error) {
-      console.error("Error sending test message via Evolution API:", error);
-      return false;
+    } finally {
+      setSending(false);
     }
   };
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-4">Configuración de WhatsApp</h2>
-      <p className="text-gray-600 mb-6">
-        Configura la integración con WhatsApp para recibir y enviar noticias
-      </p>
-
-      <Card className="mb-6">
+    <div className="space-y-6">
+      <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Integración con WhatsApp</CardTitle>
-              <CardDescription>
-                Activa la integración para recibir noticias por WhatsApp
-              </CardDescription>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="whatsapp-toggle"
-                checked={config.enabled}
-                onCheckedChange={handleToggleWhatsApp}
-              />
-              <Label htmlFor="whatsapp-toggle">
-                {config.enabled ? "Activado" : "Desactivado"}
-              </Label>
-            </div>
-          </div>
+          <CardTitle>Configuración de WhatsApp</CardTitle>
+          <CardDescription>
+            Configure la integración con WhatsApp para recibir y enviar notificaciones
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveConfig} className="space-y-4">
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="whatsapp-enabled" className="flex flex-col space-y-1">
+              <span>Habilitar WhatsApp</span>
+              <span className="font-normal text-sm text-muted-foreground">
+                Activa la integración con WhatsApp
+              </span>
+            </Label>
+            <Switch
+              id="whatsapp-enabled"
+              checked={config.enabled}
+              onCheckedChange={handleEnabledChange}
+            />
+          </div>
+
+          <div className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label htmlFor="connectionMethod">Método de conexión</Label>
-              <Select
-                value={config.connectionMethod}
-                onValueChange={(value) => setConfig({ ...config, connectionMethod: value })}
-                disabled={!config.enabled}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Seleccionar método de conexión" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="official">API Oficial de WhatsApp Business</SelectItem>
-                  <SelectItem value="evolution">Evolution API</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-gray-500">
-                Elige el método para conectar con WhatsApp
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Número de WhatsApp</Label>
+              <Label htmlFor="phone-number">Número de WhatsApp</Label>
               <Input
-                id="phoneNumber"
-                placeholder="+34612345678"
+                id="phone-number"
+                placeholder="Ejemplo: +54911XXXXXXXX"
                 value={config.phoneNumber}
-                onChange={(e) => setConfig({ ...config, phoneNumber: e.target.value })}
-                disabled={!config.enabled}
+                onChange={handlePhoneNumberChange}
               />
-              <p className="text-sm text-gray-500">
-                Ingresa el número con el código de país (ej: +34 para España)
-              </p>
             </div>
-            
+
+            <div className="space-y-2">
+              <Label>Método de conexión</Label>
+              <RadioGroup
+                value={config.connectionMethod}
+                onValueChange={(value) => 
+                  handleConnectionMethodChange(value as "official" | "evolution" | "businesscloud")
+                }
+                className="flex flex-col space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="official" id="official" />
+                  <Label htmlFor="official">WhatsApp Business API (Oficial)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="evolution" id="evolution" />
+                  <Label htmlFor="evolution">Evolution API (No oficial)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="businesscloud" id="businesscloud" />
+                  <Label htmlFor="businesscloud">Business Cloud API</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
             {config.connectionMethod === "evolution" && (
               <div className="space-y-2">
-                <Label htmlFor="evolutionApiUrl">URL de Evolution API</Label>
+                <Label htmlFor="evolution-url">URL de Evolution API</Label>
                 <Input
-                  id="evolutionApiUrl"
-                  placeholder="https://tu-servidor-evolution-api.com"
-                  value={config.evolutionApiUrl || ""}
-                  onChange={(e) => setConfig({ ...config, evolutionApiUrl: e.target.value })}
-                  disabled={!config.enabled || config.connectionMethod !== "evolution"}
+                  id="evolution-url"
+                  placeholder="Ejemplo: https://api.evolution.com"
+                  value={config.evolutionApiUrl}
+                  onChange={handleEvolutionApiUrlChange}
                 />
-                <p className="text-sm text-gray-500">
-                  URL completa donde tienes instalado Evolution API
-                </p>
               </div>
             )}
-            
+
             <div className="space-y-2">
-              <Label htmlFor="apiKey">
-                {config.connectionMethod === "evolution" ? "API Key de Evolution API" : "API Key de WhatsApp Business"}
-              </Label>
+              <Label htmlFor="api-key">API Key</Label>
               <Input
-                id="apiKey"
+                id="api-key"
                 type="password"
-                placeholder={`Ingresa tu API Key de ${config.connectionMethod === "evolution" ? "Evolution API" : "WhatsApp Business"}`}
-                value={config.apiKey || ""}
-                onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                disabled={!config.enabled}
+                placeholder="Ingrese su API key"
+                value={config.apiKey}
+                onChange={handleApiKeyChange}
               />
-              <p className="text-sm text-gray-500">
-                {config.connectionMethod === "evolution" 
-                  ? "API Key para autenticación con Evolution API (opcional según configuración)"
-                  : "Necesario para usar la API oficial de WhatsApp Business"
-                }
-              </p>
             </div>
-            
-            <div className="flex flex-col sm:flex-row gap-4 pt-2">
-              <Button 
-                type="submit" 
-                disabled={!config.enabled}
-              >
-                Guardar configuración
-              </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
-                disabled={!config.enabled || !config.phoneNumber || isTesting}
-                onClick={handleTestWhatsApp}
-                className="flex items-center"
-              >
-                <MessageCircle className="h-4 w-4 mr-2" />
-                {isTesting ? "Enviando..." : "Probar conexión"}
-              </Button>
-            </div>
-          </form>
+
+            <Button onClick={handleSaveConfig} className="w-full">
+              Guardar configuración
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Instrucciones de uso</CardTitle>
+          <CardTitle>Probar envío de mensajes</CardTitle>
+          <CardDescription>
+            Envíe un mensaje de prueba para verificar la configuración
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <p>Para recibir noticias por WhatsApp:</p>
-            <ol className="list-decimal list-inside space-y-2">
-              <li>Asegúrate de que la integración esté activada y configurada correctamente.</li>
-              <li>Envía un mensaje con la palabra <strong>"noticias"</strong> al número configurado para recibir las últimas noticias.</li>
-              <li>Para buscar noticias sobre un tema específico, envía <strong>"noticias: [tema]"</strong> (ej: "noticias: tecnología").</li>
-              <li>Para limitar la búsqueda a una fuente específica, envía <strong>"noticias: [tema] de [fuente]"</strong> (ej: "noticias: economía de El País").</li>
-            </ol>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="test-phone">Número de WhatsApp</Label>
+            <Input
+              id="test-phone"
+              placeholder="Ejemplo: +54911XXXXXXXX"
+              value={testPhone}
+              onChange={handleTestPhoneChange}
+            />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="test-message">Mensaje de prueba</Label>
+            <Textarea
+              id="test-message"
+              placeholder="Escriba su mensaje de prueba aquí..."
+              value={testMessage}
+              onChange={handleTestMessageChange}
+              rows={3}
+            />
+          </div>
+
+          <Button 
+            onClick={handleSendTestMessage} 
+            className="w-full"
+            disabled={sending}
+          >
+            {sending ? "Enviando..." : "Enviar mensaje de prueba"}
+          </Button>
         </CardContent>
       </Card>
     </div>

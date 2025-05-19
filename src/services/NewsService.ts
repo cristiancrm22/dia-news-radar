@@ -1,6 +1,7 @@
+
 import { NewsItem, NewsSource, Topic, WhatsAppConfig } from "@/types/news";
 
-// Mock data for development purposes
+// Ampliando los datos de prueba para búsquedas más diversas
 const mockNews: NewsItem[] = [
   {
     id: "1",
@@ -81,6 +82,36 @@ const mockNews: NewsItem[] = [
     sourceName: "Clarín",
     topics: ["Política", "Gobierno"],
     imageUrl: "https://via.placeholder.com/300x200"
+  },
+  {
+    id: "9",
+    title: "KICILLOF participa en foro internacional sobre políticas públicas",
+    summary: "El gobernador KICILLOF presentó las políticas de su administración en un foro internacional, generando interés entre diversos líderes regionales.",
+    date: new Date().toISOString(),
+    sourceUrl: "https://www.pagina12.com/politica/kicillof-foro",
+    sourceName: "Página 12",
+    topics: ["Política", "Internacional"],
+    imageUrl: "https://via.placeholder.com/300x200"
+  },
+  {
+    id: "10",
+    title: "Milei critica duramente las políticas económicas provinciales",
+    summary: "El presidente Javier Milei criticó duramente las políticas económicas de varias provincias, señalando problemas estructurales y deficiencias en la gestión.",
+    date: new Date().toISOString(),
+    sourceUrl: "https://www.clarin.com/economia/milei-criticas",
+    sourceName: "Clarín",
+    topics: ["Economía", "Política"],
+    imageUrl: "https://via.placeholder.com/300x200"
+  },
+  {
+    id: "11",
+    title: "Fernández y su legado en la política argentina",
+    summary: "Un análisis profundo sobre el impacto del ex-presidente Alberto Fernández en la política argentina y las consecuencias de sus decisiones en la economía actual.",
+    date: new Date().toISOString(),
+    sourceUrl: "https://www.lanacion.com/politica/fernandez-legado",
+    sourceName: "La Nación",
+    topics: ["Política", "Historia"],
+    imageUrl: "https://via.placeholder.com/300x200"
   }
 ];
 
@@ -128,53 +159,80 @@ class NewsService {
     });
   }
 
-  // Search news by query across all sources and topics
+  // Search news by query across all sources and topics - MEJORADO
   static async searchNews(query: string, source?: string): Promise<NewsItem[]> {
-    if (!query) return mockNews;
+    if (!query || query.trim() === "") {
+      return this.getNews();
+    }
     
-    // In a real implementation, this would call different APIs for each source
-    // and combine the results. For now, we'll just filter the mock data.
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+    // Simula un retraso de API
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     try {
-      const lowerCaseQuery = query.toLowerCase();
+      console.log(`Buscando noticias con términos: "${query}"`);
       
-      // Mejorado: busca coincidencias parciales en cualquier parte del texto
-      let filteredNews = mockNews.filter(
-        item => 
-          item.title.toLowerCase().includes(lowerCaseQuery) || 
-          item.summary.toLowerCase().includes(lowerCaseQuery) ||
-          item.sourceName.toLowerCase().includes(lowerCaseQuery) ||
-          item.topics.some(topic => topic.toLowerCase().includes(lowerCaseQuery))
-      );
+      // Normalizar la consulta: convertir a minúsculas y quitar acentos
+      const normalizeText = (text: string): string => {
+        return text.toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim();
+      };
+      
+      const normalizedQuery = normalizeText(query);
+      
+      // Función para verificar si un texto contiene la consulta
+      const textContainsQuery = (text: string, searchQuery: string): boolean => {
+        return normalizeText(text).includes(searchQuery);
+      };
+      
+      // Buscar en todos los campos relevantes
+      let filteredNews = mockNews.filter(item => {
+        const titleMatches = textContainsQuery(item.title, normalizedQuery);
+        const summaryMatches = textContainsQuery(item.summary, normalizedQuery);
+        const sourceMatches = textContainsQuery(item.sourceName, normalizedQuery);
+        const topicMatches = item.topics.some(topic => 
+          textContainsQuery(topic, normalizedQuery)
+        );
+        
+        return titleMatches || summaryMatches || sourceMatches || topicMatches;
+      });
       
       console.log(`Búsqueda de "${query}" encontró ${filteredNews.length} resultados`);
       
-      // Si no hay resultados, intentar buscar palabras individuales
-      if (filteredNews.length === 0 && lowerCaseQuery.includes(" ")) {
-        const queryWords = lowerCaseQuery.split(" ").filter(word => word.length > 2);
+      // Si no hay resultados, buscar por palabras separadas (para consultas con múltiples palabras)
+      if (filteredNews.length === 0 && normalizedQuery.includes(" ")) {
+        const queryWords = normalizedQuery.split(" ")
+          .filter(word => word.length > 2); // Ignorar palabras muy cortas
+          
         console.log("Intentando búsqueda por palabras individuales:", queryWords);
         
         filteredNews = mockNews.filter(item => {
-          const itemText = `${item.title.toLowerCase()} ${item.summary.toLowerCase()} ${item.topics.join(" ").toLowerCase()}`;
-          return queryWords.some(word => itemText.includes(word));
+          const normalizedTitle = normalizeText(item.title);
+          const normalizedSummary = normalizeText(item.summary);
+          const normalizedSource = normalizeText(item.sourceName);
+          const normalizedTopics = item.topics.map(normalizeText).join(" ");
+          
+          const fullText = `${normalizedTitle} ${normalizedSummary} ${normalizedSource} ${normalizedTopics}`;
+          
+          return queryWords.some(word => fullText.includes(word));
         });
         
         console.log(`Búsqueda por palabras encontró ${filteredNews.length} resultados`);
       }
       
-      // If source is specified, filter by source
-      if (source) {
-        const lowerCaseSource = source.toLowerCase();
-        filteredNews = filteredNews.filter(
-          item => item.sourceName.toLowerCase().includes(lowerCaseSource)
+      // Si se especifica una fuente, filtrar por ella
+      if (source && filteredNews.length > 0) {
+        const normalizedSource = normalizeText(source);
+        filteredNews = filteredNews.filter(item => 
+          normalizeText(item.sourceName).includes(normalizedSource)
         );
       }
       
       return filteredNews;
     } catch (error) {
-      console.error("Error filtering news:", error);
-      return []; // Return empty array on error to prevent filter issues
+      console.error("Error filtrando noticias:", error);
+      return []; // Retornar array vacío en caso de error para evitar problemas de filtrado
     }
   }
 
