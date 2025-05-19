@@ -1,4 +1,3 @@
-
 import { NewsItem, NewsSource, Topic, WhatsAppConfig } from "@/types/news";
 
 // Mock data for development purposes
@@ -86,7 +85,9 @@ const defaultTopics: Topic[] = [
 const defaultWhatsAppConfig: WhatsAppConfig = {
   enabled: false,
   phoneNumber: "",
-  apiKey: ""
+  apiKey: "",
+  connectionMethod: "official",
+  evolutionApiUrl: ""
 };
 
 // LocalStorage keys
@@ -105,17 +106,31 @@ class NewsService {
     });
   }
 
-  // Search news by query (client-side filtering for demo purposes)
-  static searchNews(query: string): NewsItem[] {
+  // Search news by query across all sources and topics
+  static async searchNews(query: string, source?: string): Promise<NewsItem[]> {
     if (!query) return mockNews;
     
+    // In a real implementation, this would call different APIs for each source
+    // and combine the results. For now, we'll just filter the mock data.
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+    
     const lowerCaseQuery = query.toLowerCase();
-    return mockNews.filter(
+    let filteredNews = mockNews.filter(
       item => 
         item.title.toLowerCase().includes(lowerCaseQuery) || 
         item.summary.toLowerCase().includes(lowerCaseQuery) ||
         item.topics.some(topic => topic.toLowerCase().includes(lowerCaseQuery))
     );
+    
+    // If source is specified, filter by source
+    if (source) {
+      const lowerCaseSource = source.toLowerCase();
+      filteredNews = filteredNews.filter(
+        item => item.sourceName.toLowerCase().includes(lowerCaseSource)
+      );
+    }
+    
+    return filteredNews;
   }
 
   // Get sources from localStorage or defaults
@@ -154,7 +169,15 @@ class NewsService {
   static getWhatsAppConfig(): WhatsAppConfig {
     try {
       const savedConfig = localStorage.getItem(WHATSAPP_CONFIG_KEY);
-      return savedConfig ? JSON.parse(savedConfig) : defaultWhatsAppConfig;
+      // Handle case where saved config doesn't have the new connectionMethod field
+      if (savedConfig) {
+        const parsedConfig = JSON.parse(savedConfig);
+        if (!parsedConfig.connectionMethod) {
+          parsedConfig.connectionMethod = "official";
+        }
+        return parsedConfig;
+      }
+      return defaultWhatsAppConfig;
     } catch (error) {
       console.error("Error loading WhatsApp config:", error);
       return defaultWhatsAppConfig;
@@ -166,15 +189,77 @@ class NewsService {
     localStorage.setItem(WHATSAPP_CONFIG_KEY, JSON.stringify(config));
   }
 
-  // In a real application, this would send a request to a WhatsApp API
-  static sendWhatsAppMessage(phone: string, message: string): Promise<boolean> {
+  // Send a WhatsApp message
+  static async sendWhatsAppMessage(phone: string, message: string): Promise<boolean> {
     console.log(`Sending WhatsApp message to ${phone}: ${message}`);
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(true);
-      }, 1000);
-    });
+    
+    const config = this.getWhatsAppConfig();
+    
+    // In a real implementation, this would call the WhatsApp Business API
+    // For now, we'll simulate a successful API call
+    
+    if (config.connectionMethod === "evolution" && config.evolutionApiUrl) {
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (config.apiKey) {
+          headers['Authorization'] = `Bearer ${config.apiKey}`;
+        }
+        
+        const response = await fetch(`${config.evolutionApiUrl.trim()}/message/sendText/${phone}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            number: phone.replace('+', ''),
+            textMessage: message
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data && data.status === "success";
+        }
+        return false;
+      } catch (error) {
+        console.error("Error sending message via Evolution API:", error);
+        return false;
+      }
+    } else {
+      // Simulate API call for official WhatsApp API
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(true);
+        }, 1000);
+      });
+    }
+  }
+
+  // Parse WhatsApp message to search for news
+  static async processWhatsAppMessage(message: string): Promise<NewsItem[]> {
+    message = message.trim().toLowerCase();
+    
+    if (message === "noticias") {
+      // Return all recent news
+      return this.getNews();
+    }
+    
+    if (message.startsWith("noticias:")) {
+      const query = message.substring("noticias:".length).trim();
+      
+      // Check if the query includes a source specification
+      if (query.includes(" de ")) {
+        const [topic, source] = query.split(" de ", 2);
+        return this.searchNews(topic.trim(), source.trim());
+      }
+      
+      // Otherwise just search for the topic
+      return this.searchNews(query);
+    }
+    
+    // Return empty array for unrecognized commands
+    return [];
   }
 }
 
