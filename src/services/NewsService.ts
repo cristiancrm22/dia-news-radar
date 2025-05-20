@@ -616,13 +616,13 @@ class NewsService {
       }
       
       // Fetch from the API endpoint
-      const response =  fetch(`${API_ENDPOINT}/news?${searchParams.toString()}`);
+      const response = await fetch(`${API_ENDPOINT}/news?${searchParams.toString()}`);
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
       }
       
-      const data =  response.json();
+      const data = await response.json();
       
       if (!Array.isArray(data)) {
         throw new Error('Invalid data format');
@@ -642,7 +642,7 @@ class NewsService {
       return newsItems;
     } catch (error) {
       console.error('Error fetching news from API:', error);
-      return this.getNews(); // Fallback to mock data
+      return []; // Return an empty array instead of falling back to mock data
     }
   }
 
