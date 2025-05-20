@@ -1,8 +1,9 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw, Mail } from "lucide-react";
+import { Search, RefreshCw, Mail, Filter } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
@@ -10,7 +11,14 @@ import TopicsConfig from "@/components/TopicsConfig";
 import WhatsAppConfig from "@/components/WhatsAppConfig";
 import EmailConfig from "@/components/EmailConfig";
 import NewsService from "@/services/NewsService";
-import { NewsItem } from "@/types/news";
+import { NewsItem, NewsSource } from "@/types/news";
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 const Index = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -18,16 +26,32 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState("noticias");
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<string>("");
+  const [availableSources, setAvailableSources] = useState<NewsSource[]>([]);
+  const [includeTwitter, setIncludeTwitter] = useState(true);
 
   useEffect(() => {
     // Fetch news on component mount
     fetchNews();
+    
+    // Load available sources
+    setAvailableSources(NewsService.getSources().filter(source => source.enabled));
   }, []);
 
   const fetchNews = async () => {
     setLoading(true);
     setIsSearchActive(false);
+    setSearchQuery("");
+    setSelectedSource("");
+    
     try {
+      // Update search settings
+      const currentSettings = NewsService.getSearchSettings();
+      NewsService.updateSearchSettings({
+        ...currentSettings,
+        includeTwitter: includeTwitter
+      });
+      
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
       toast({
@@ -53,29 +77,46 @@ const Index = () => {
   };
 
   const fetchSearchResults = async () => {
-    if (!searchQuery.trim()) {
+    if (!searchQuery.trim() && !selectedSource) {
       fetchNews();
       return;
     }
     
     setLoading(true);
     setIsSearchActive(true);
+    
     try {
-      console.log(`Buscando noticias con términos: "${searchQuery}"`);
-      const filteredNews = await NewsService.searchNews(searchQuery);
+      console.log(`Buscando noticias con términos: "${searchQuery}" y fuente: "${selectedSource}"`);
+      
+      // Update search settings for twitter inclusion
+      const currentSettings = NewsService.getSearchSettings();
+      NewsService.updateSearchSettings({
+        ...currentSettings,
+        includeTwitter: includeTwitter
+      });
+      
+      const filteredNews = await NewsService.searchNews(searchQuery, selectedSource);
       
       // Asegurarnos de que siempre tenemos un array
       setNews(Array.isArray(filteredNews) ? filteredNews : []);
       
       if (filteredNews.length === 0) {
+        let message = `No se encontraron noticias`;
+        if (searchQuery) message += ` con el término "${searchQuery}"`;
+        if (selectedSource) message += ` en la fuente "${selectedSource}"`;
+        
         toast({
           title: "Sin resultados",
-          description: `No se encontraron noticias con el término "${searchQuery}"`,
+          description: message,
         });
       } else {
+        let message = `Se encontraron ${filteredNews.length} noticias`;
+        if (searchQuery) message += ` con el término "${searchQuery}"`;
+        if (selectedSource) message += ` en la fuente "${selectedSource}"`;
+        
         toast({
           title: "Búsqueda completada",
-          description: `Se encontraron ${filteredNews.length} noticias con el término "${searchQuery}"`,
+          description: message,
         });
       }
     } catch (error) {
@@ -117,13 +158,65 @@ const Index = () => {
         <TabsContent value="noticias">
           <div className="flex flex-col md:flex-row items-start md:items-center mb-6 gap-4">
             <form onSubmit={handleSearch} className="flex w-full max-w-lg gap-2">
-              <Input
-                type="text"
-                placeholder="Buscar noticias (nombres, apellidos, palabras)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-grow"
-              />
+              <div className="relative flex-grow">
+                <Input
+                  type="text"
+                  placeholder="Buscar noticias (nombres, apellidos, palabras)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pr-10"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" type="button">
+                    <Filter className="h-4 w-4 mr-2" />
+                    Filtros
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80">
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Opciones de búsqueda</h4>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="source-filter">Filtrar por fuente</Label>
+                      <select
+                        id="source-filter"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2"
+                        value={selectedSource}
+                        onChange={(e) => setSelectedSource(e.target.value)}
+                      >
+                        <option value="">Todas las fuentes</option>
+                        {availableSources.map((source) => (
+                          <option key={source.id} value={source.name}>
+                            {source.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="twitter-option" 
+                        checked={includeTwitter} 
+                        onCheckedChange={(checked) => {
+                          setIncludeTwitter(checked === true);
+                        }}
+                      />
+                      <Label htmlFor="twitter-option">Incluir resultados de Twitter</Label>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Button type="submit" variant="default">
                 <Search className="h-4 w-4 mr-2" />
                 Buscar
@@ -156,7 +249,7 @@ const Index = () => {
             <div className="text-center py-12">
               <p className="text-gray-500">
                 {isSearchActive 
-                  ? `No se encontraron noticias para "${searchQuery}"`
+                  ? `No se encontraron noticias${searchQuery ? ` para "${searchQuery}"` : ''}${selectedSource ? ` en ${selectedSource}` : ''}`
                   : "No hay noticias disponibles"}
               </p>
               {isSearchActive && (

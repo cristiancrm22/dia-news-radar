@@ -1,10 +1,65 @@
 import { NewsItem, NewsSource, Topic, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
+import PythonNewsAdapter, { fetchNewsFromPythonScript } from './PythonNewsAdapter';
 
-// Configuración de la API
-const API_ENDPOINT = '/api'; // En producción, configurar el endpoint correcto
-const USE_MOCK_DATA = true; // Cambiar a false en producción
+// Configuration
+const USE_MOCK_DATA = true; // Change to false in production
+const USE_PYTHON_SCRAPER = true; // Set to true to use the Python script
 
-// Ampliando los datos de prueba para búsquedas más diversas y asegurando URLs correctas
+// Default sources
+const defaultSources: NewsSource[] = [
+  { id: "1", name: "El País", url: "https://elpais.com", enabled: true },
+  { id: "2", name: "BBC News", url: "https://www.bbc.com", enabled: true },
+  { id: "3", name: "CNN", url: "https://www.cnn.com", enabled: true },
+  { id: "4", name: "Twitter", url: "https://twitter.com", enabled: false },
+  { id: "5", name: "La Nación", url: "https://www.lanacion.com.ar", enabled: true },
+  { id: "6", name: "Clarín", url: "https://www.clarin.com.ar", enabled: true },
+  { id: "7", name: "Infobae", url: "https://www.infobae.com", enabled: true },
+  { id: "8", name: "Página 12", url: "https://www.pagina12.com.ar", enabled: true },
+  { id: "9", name: "Ámbito", url: "https://www.ambito.com", enabled: true },
+  { id: "10", name: "Perfil", url: "https://www.perfil.com", enabled: true }
+];
+
+// Default topics
+const defaultTopics: Topic[] = [
+  { id: "1", name: "Política", enabled: true },
+  { id: "2", name: "Economía", enabled: true },
+  { id: "3", name: "Tecnología", enabled: true },
+  { id: "4", name: "Deportes", enabled: false },
+  { id: "5", name: "Ciencia", enabled: true },
+  { id: "6", name: "Inteligencia Artificial", enabled: true },
+  { id: "7", name: "Medio Ambiente", enabled: true },
+  { id: "8", name: "Internacional", enabled: true },
+  { id: "9", name: "Gobierno Provincial", enabled: true },
+  { id: "10", name: "Legislativo", enabled: true },
+  { id: "11", name: "Educación", enabled: true }
+];
+
+// Default WhatsApp config
+const defaultWhatsAppConfig: WhatsAppConfig = {
+  enabled: false,
+  phoneNumber: "",
+  apiKey: "",
+  connectionMethod: "official",
+  evolutionApiUrl: ""
+};
+
+// Default email config
+const defaultEmailConfig: EmailConfig = {
+  enabled: false,
+  email: "",
+  frequency: "daily",
+  time: "08:00",
+  keywords: []
+};
+
+// Default search settings
+const defaultSearchSettings: SearchSettings = {
+  maxResults: 50,
+  includeTwitter: true,
+  keywords: ["Magario", "Kicillof", "Espinosa"]
+};
+
+// Mock news data for when not using the Python scraper
 const mockNews: NewsItem[] = [
   {
     id: "1",
@@ -128,55 +183,6 @@ const mockNews: NewsItem[] = [
   }
 ];
 
-// Default sources
-const defaultSources: NewsSource[] = [
-  { id: "1", name: "El País", url: "https://elpais.com", enabled: true },
-  { id: "2", name: "BBC News", url: "https://www.bbc.com", enabled: true },
-  { id: "3", name: "CNN", url: "https://www.cnn.com", enabled: true },
-  { id: "4", name: "Twitter", url: "https://twitter.com", enabled: false },
-  { id: "5", name: "La Nación", url: "https://www.lanacion.com.ar", enabled: true },
-  { id: "6", name: "Clarín", url: "https://www.clarin.com.ar", enabled: true },
-  { id: "7", name: "Infobae", url: "https://www.infobae.com", enabled: true },
-  { id: "8", name: "Página 12", url: "https://www.pagina12.com.ar", enabled: true }
-];
-
-// Default topics
-const defaultTopics: Topic[] = [
-  { id: "1", name: "Política", enabled: true },
-  { id: "2", name: "Economía", enabled: true },
-  { id: "3", name: "Tecnología", enabled: true },
-  { id: "4", name: "Deportes", enabled: false },
-  { id: "5", name: "Ciencia", enabled: true },
-  { id: "6", name: "Inteligencia Artificial", enabled: true },
-  { id: "7", name: "Medio Ambiente", enabled: true },
-  { id: "8", name: "Internacional", enabled: true }
-];
-
-// Default WhatsApp config
-const defaultWhatsAppConfig: WhatsAppConfig = {
-  enabled: false,
-  phoneNumber: "",
-  apiKey: "",
-  connectionMethod: "official",
-  evolutionApiUrl: ""
-};
-
-// Default email config
-const defaultEmailConfig: EmailConfig = {
-  enabled: false,
-  email: "",
-  frequency: "daily",
-  time: "08:00",
-  keywords: []
-};
-
-// Default search settings
-const defaultSearchSettings: SearchSettings = {
-  maxResults: 50,
-  includeTwitter: true,
-  keywords: ["Magario", "Kicillof", "Espinosa"]
-};
-
 // LocalStorage keys
 const SOURCES_KEY = 'news_radar_sources';
 const TOPICS_KEY = 'news_radar_topics';
@@ -239,118 +245,34 @@ const textUtils = {
 };
 
 class NewsService {
-  // Fetch news from real sources using the Python script as an API
-  static async getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
-    if (USE_MOCK_DATA) {
-      // Return mock data when in development
-      return this.getNews();
-    }
-    
-    try {
-      // Define search parameters
-      const searchParams = new URLSearchParams();
-      
-      if (keywords && Array.isArray(keywords) && keywords.length > 0) {
-        searchParams.append('keywords', keywords.join(','));
-      }
-      
-      // Fetch from the API endpoint
-      const response = await fetch(`${API_ENDPOINT}/news?${searchParams.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!Array.isArray(data)) {
-        throw new Error('Invalid data format');
-      }
-      
-      // Transform the API response to match our NewsItem interface
-      const newsItems: NewsItem[] = data.map((item: any) => ({
-        id: item.id || String(Math.random()),
-        title: item.titulo || item.title || 'Sin título',
-        summary: item.resumen || item.summary || '',
-        date: item.fecha || item.date || new Date().toISOString(),
-        sourceUrl: item.url || '#',
-        sourceName: this.extractSourceNameFromUrl(item.url || '') || 'Fuente desconocida',
-        topics: this.inferTopicsFromText(item.titulo + ' ' + item.resumen),
-      }));
-      
-      return newsItems;
-    } catch (error) {
-      console.error('Error fetching news from API:', error);
-      return this.getNews(); // Fallback to mock data
-    }
-  }
-
-  // Extract source name from URL
-  private static extractSourceNameFromUrl(url: string): string {
-    try {
-      if (!url) return '';
-      const urlObj = new URL(url);
-      const hostname = urlObj.hostname.replace('www.', '');
-      
-      // Extract the main domain name (e.g., clarin.com from www.clarin.com.ar)
-      const domainParts = hostname.split('.');
-      if (domainParts.length >= 2) {
-        return domainParts[domainParts.length - 2];
-      }
-      return hostname;
-    } catch {
-      return '';
-    }
-  }
-
-  // Infer topics from text based on keywords
-  private static inferTopicsFromText(text: string): string[] {
-    const topics: string[] = [];
-    
-    // Simple topic inference rules
-    if (/econom[íi]a|inflaci[óo]n|d[óo]lar|finanzas|presupuesto/i.test(text)) {
-      topics.push('Economía');
-    }
-    
-    if (/pol[íi]tica|gobierno|presidente|ministro|diputado|senador|candidato|elecci[óo]n/i.test(text)) {
-      topics.push('Política');
-    }
-    
-    if (/senado|legislatura|parlamento|c[áa]mara|congreso/i.test(text)) {
-      topics.push('Legislativo');
-    }
-    
-    if (/kicillof|axel|gobernador/i.test(text)) {
-      topics.push('Gobierno Provincial');
-    }
-    
-    if (/magario|ver[óo]nica|vicegobernadora/i.test(text)) {
-      topics.push('Gobierno Provincial');
-    }
-    
-    // Ensure we have at least one topic
-    if (topics.length === 0) {
-      topics.push('General');
-    }
-    
-    return topics;
-  }
-
-  // Get all news (would be replaced with actual API calls in production)
+  /**
+   * Get news using either mock data, Python script, or API
+   */
   static async getNews(): Promise<NewsItem[]> {
     try {
       const settings = this.getSearchSettings();
+      
+      // Check if we should use the Python scraper
+      if (USE_PYTHON_SCRAPER) {
+        console.log("Using Python scraper for news");
+        return fetchNewsFromPythonScript({
+          keywords: settings.keywords,
+          includeTwitter: settings.includeTwitter,
+          maxResults: settings.maxResults
+        });
+      }
+      
+      // If not using Python scraper, use the existing methods
       if (!USE_MOCK_DATA) {
         return this.getNewsFromRealSources(settings.keywords);
       }
       
-      // Simulate API call delay
+      // Use mock data with delay
       return new Promise((resolve) => {
         setTimeout(() => {
-          // Ensure we have valid data
           const validNews = Array.isArray(mockNews) ? mockNews : [];
           resolve(validNews);
-        }, 500); // Reduced delay for better UX
+        }, 500);
       });
     } catch (error) {
       console.error("Error fetching news:", error);
@@ -358,133 +280,73 @@ class NewsService {
     }
   }
 
-  // Versión mejorada y optimizada de búsqueda
+  /**
+   * Search for news with specific query
+   */
   static async searchNews(query: string, source?: string): Promise<NewsItem[]> {
     try {
       if (!query || query.trim() === "") {
         return this.getNews();
       }
       
+      // If we're using the Python scraper, search with it
+      if (USE_PYTHON_SCRAPER) {
+        console.log(`Searching for "${query}" using Python scraper`);
+        let sources: string[] | undefined;
+        
+        if (source) {
+          sources = [source];
+        } else {
+          // Get enabled sources from settings
+          const allSources = this.getSources();
+          sources = allSources
+            .filter(s => s.enabled)
+            .map(s => s.url);
+        }
+        
+        return fetchNewsFromPythonScript({
+          keywords: [query],
+          sources: sources,
+          includeTwitter: this.getSearchSettings().includeTwitter,
+          maxResults: this.getSearchSettings().maxResults
+        });
+      }
+
+      // If not using Python scraper, fall back to existing search method
       if (!USE_MOCK_DATA) {
-        // If we're using real API, do a direct search
         return this.getNewsFromRealSources([query]);
       }
       
-      // Simula un retraso de API
-      await new Promise(resolve => setTimeout(resolve, 300)); // Reduced delay
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       console.log(`Buscando noticias con términos: "${query}"`);
       
-      // Obtener todas las noticias para buscar
+      // Filtering mock news data
       const allNews = Array.isArray(mockNews) ? mockNews : [];
-      if (allNews.length === 0) return [];
       
-      // Normalizar la consulta
-      const normalizedQuery = textUtils.normalizeText(query);
-      
-      // Si la consulta es muy corta (1-2 caracteres), requerir coincidencia exacta
-      // para evitar demasiados falsos positivos
-      const isShortQuery = normalizedQuery.length <= 2;
-      
-      // Primera pasada: buscar coincidencias en todos los campos relevantes
+      // Filtering and sorting logic
       let filteredNews = allNews.filter(item => {
         if (!item) return false;
         
-        // Para consultas cortas, ser más estricto
-        if (isShortQuery) {
-          return textUtils.normalizeText(item.title).includes(normalizedQuery) ||
-                 textUtils.normalizeText(item.sourceName) === normalizedQuery;
-        }
+        const titleContainsQuery = item.title.toLowerCase().includes(query.toLowerCase());
+        const summaryContainsQuery = item.summary.toLowerCase().includes(query.toLowerCase());
+        const sourceContainsQuery = item.sourceName.toLowerCase().includes(query.toLowerCase());
         
-        // Buscar en título, resumen, fuente y temas
-        const titleMatches = textUtils.textContainsQuery(item.title, normalizedQuery);
-        const summaryMatches = textUtils.textContainsQuery(item.summary, normalizedQuery);
-        const sourceMatches = textUtils.textContainsQuery(item.sourceName, normalizedQuery);
-        
-        // Verificar que topics sea un array antes de usar some()
-        const topicMatches = item.topics && Array.isArray(item.topics) && 
-            item.topics.some(topic => textUtils.textContainsQuery(topic, normalizedQuery));
-        
-        return titleMatches || summaryMatches || sourceMatches || topicMatches;
+        return titleContainsQuery || summaryContainsQuery || sourceContainsQuery;
       });
       
-      console.log(`Búsqueda de "${query}" encontró ${filteredNews.length} resultados en primera pasada`);
-      
-      // Segunda pasada: si no hay resultados y la consulta tiene múltiples palabras
-      if (filteredNews.length === 0 && normalizedQuery.includes(" ")) {
-        const queryWords = normalizedQuery.split(" ")
-          .filter(word => word.length > 2); // Ignorar palabras muy cortas
-          
-        if (queryWords.length > 0) {
-          console.log("Intentando búsqueda por palabras individuales:", queryWords);
-          
-          filteredNews = allNews.filter(item => {
-            if (!item) return false;
-            
-            const normalizedTitle = textUtils.normalizeText(item.title);
-            const normalizedSummary = textUtils.normalizeText(item.summary);
-            const normalizedSource = textUtils.normalizeText(item.sourceName);
-            
-            // Combinar todos los textos para una búsqueda más eficiente
-            let combinedText = `${normalizedTitle} ${normalizedSummary} ${normalizedSource}`;
-            
-            // Añadir topics si existen y son un array
-            if (item.topics && Array.isArray(item.topics)) {
-              combinedText += ' ' + item.topics.map(textUtils.normalizeText).join(" ");
-            }
-            
-            // Comprobar si alguna palabra coincide con el texto combinado
-            return textUtils.textContainsAnyWord(combinedText, queryWords);
-          });
-          
-          console.log(`Búsqueda por palabras encontró ${filteredNews.length} resultados`);
-        }
-      }
-      
-      // Si todavía no hay resultados, intentar buscar coincidencias parciales
-      // (por ejemplo, parte del nombre o apellido)
-      if (filteredNews.length === 0 && normalizedQuery.length > 2) {
-        console.log("Intentando búsqueda por coincidencias parciales");
-        
-        filteredNews = allNews.filter(item => {
-          if (!item) return false;
-          
-          // Buscar en el título y resumen por coincidencias parciales
-          const titleWords = textUtils.normalizeText(item.title).split(/\s+/);
-          const summaryWords = textUtils.normalizeText(item.summary).split(/\s+/);
-          
-          const anyMatch = [...titleWords, ...summaryWords].some(word => 
-            word.length > 3 && (
-              word.includes(normalizedQuery) || 
-              normalizedQuery.includes(word)
-            )
-          );
-          
-          return anyMatch;
-        });
-        
-        console.log(`Búsqueda por coincidencias parciales encontró ${filteredNews.length} resultados`);
-      }
-      
-      // Si se especifica una fuente, filtrar por ella
+      // If source is provided, filter by it
       if (source && filteredNews.length > 0) {
-        const normalizedSource = textUtils.normalizeText(source);
         filteredNews = filteredNews.filter(item => 
-          item && textUtils.normalizeText(item.sourceName).includes(normalizedSource)
+          item.sourceName.toLowerCase().includes(source.toLowerCase())
         );
       }
       
-      // Ordenar resultados por relevancia
-      filteredNews.sort((a, b) => {
-        const scoreA = textUtils.scoreNewsRelevance(a, query);
-        const scoreB = textUtils.scoreNewsRelevance(b, query);
-        return scoreB - scoreA; // Orden descendente (mayor puntuación primero)
-      });
-      
       return filteredNews;
     } catch (error) {
-      console.error("Error filtrando noticias:", error);
-      return []; // Retornar array vacío en caso de error para evitar problemas de filtrado
+      console.error("Error searching news:", error);
+      return [];
     }
   }
 
@@ -588,6 +450,7 @@ class NewsService {
     }
     
     try {
+      const API_ENDPOINT = '/api';
       const response = await fetch(`${API_ENDPOINT}/email/test`, {
         method: 'POST',
         headers: {
@@ -731,6 +594,107 @@ class NewsService {
       console.error("Error processing WhatsApp message:", error);
       return []; // Return empty array on error to prevent filter issues
     }
+  }
+
+  static getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
+    // This function is now replaced by the Python scraper
+    if (USE_PYTHON_SCRAPER) {
+      return fetchNewsFromPythonScript({
+        keywords: keywords || [],
+        includeTwitter: this.getSearchSettings().includeTwitter,
+        maxResults: this.getSearchSettings().maxResults
+      });
+    }
+    
+    const API_ENDPOINT = '/api';
+    try {
+      // Define search parameters
+      const searchParams = new URLSearchParams();
+      
+      if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+        searchParams.append('keywords', keywords.join(','));
+      }
+      
+      // Fetch from the API endpoint
+      const response =  fetch(`${API_ENDPOINT}/news?${searchParams.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data =  response.json();
+      
+      if (!Array.isArray(data)) {
+        throw new Error('Invalid data format');
+      }
+      
+      // Transform the API response to match our NewsItem interface
+      const newsItems: NewsItem[] = data.map((item: any) => ({
+        id: item.id || String(Math.random()),
+        title: item.titulo || item.title || 'Sin título',
+        summary: item.resumen || item.summary || '',
+        date: item.fecha || item.date || new Date().toISOString(),
+        sourceUrl: item.url || '#',
+        sourceName: this.extractSourceNameFromUrl(item.url || '') || 'Fuente desconocida',
+        topics: this.inferTopicsFromText(item.titulo + ' ' + item.resumen),
+      }));
+      
+      return newsItems;
+    } catch (error) {
+      console.error('Error fetching news from API:', error);
+      return this.getNews(); // Fallback to mock data
+    }
+  }
+
+  // Extract source name from URL
+  private static extractSourceNameFromUrl(url: string): string {
+    try {
+      if (!url) return '';
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.replace('www.', '');
+      
+      // Extract the main domain name (e.g., clarin.com from www.clarin.com.ar)
+      const domainParts = hostname.split('.');
+      if (domainParts.length >= 2) {
+        return domainParts[domainParts.length - 2];
+      }
+      return hostname;
+    } catch {
+      return '';
+    }
+  }
+
+  // Infer topics from text based on keywords
+  private static inferTopicsFromText(text: string): string[] {
+    const topics: string[] = [];
+    
+    // Simple topic inference rules
+    if (/econom[íi]a|inflaci[óo]n|d[óo]lar|finanzas|presupuesto/i.test(text)) {
+      topics.push('Economía');
+    }
+    
+    if (/pol[íi]tica|gobierno|presidente|ministro|diputado|senador|candidato|elecci[óo]n/i.test(text)) {
+      topics.push('Política');
+    }
+    
+    if (/senado|legislatura|parlamento|c[áa]mara|congreso/i.test(text)) {
+      topics.push('Legislativo');
+    }
+    
+    if (/kicillof|axel|gobernador/i.test(text)) {
+      topics.push('Gobierno Provincial');
+    }
+    
+    if (/magario|ver[óo]nica|vicegobernadora/i.test(text)) {
+      topics.push('Gobierno Provincial');
+    }
+    
+    // Ensure we have at least one topic
+    if (topics.length === 0) {
+      topics.push('General');
+    }
+    
+    return topics;
   }
 }
 

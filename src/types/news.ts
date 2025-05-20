@@ -46,3 +46,22 @@ export interface SearchSettings {
   includeTwitter: boolean;
   keywords: string[];
 }
+
+export interface NewsFeedResponse {
+  status: string;
+  articles: NewsItem[];
+}
+
+// Python script response structure
+export interface PythonScriptNews {
+  titulo: string;
+  fecha: string;
+  url: string;
+  resumen: string;
+}
+
+export interface PythonScriptResponse {
+  status: string;
+  data: PythonScriptNews[];
+  error?: string;
+}

@@ -2,41 +2,64 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link, Globe, ExternalLink } from "lucide-react";
+import { ExternalLink, Globe } from "lucide-react";
 import { NewsItem } from "@/types/news";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NewsCardProps {
   news: NewsItem;
 }
 
 const NewsCard = ({ news }: NewsCardProps) => {
-  // Ensure URL has proper format with more robust validation
+  // Enhanced URL validation that better handles different URL formats
   const getValidUrl = (url: string): string => {
     if (!url || typeof url !== 'string') return '#';
     
     try {
-      // Check if URL already has http/https
-      if (!/^https?:\/\//i.test(url)) {
-        url = 'https://' + url;
+      // Clean the URL and ensure it has a protocol
+      let cleanUrl = url.trim();
+      
+      // Remove any text before the actual URL if it was embedded in text
+      const urlMatches = cleanUrl.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatches && urlMatches[1]) {
+        cleanUrl = urlMatches[1];
       }
       
-      // Use URL constructor to validate
-      const validatedUrl = new URL(url).toString();
+      // Add https protocol if missing
+      if (!/^https?:\/\//i.test(cleanUrl)) {
+        cleanUrl = 'https://' + cleanUrl;
+      }
+      
+      // Validate URL
+      const validatedUrl = new URL(cleanUrl).toString();
       return validatedUrl;
     } catch (error) {
       console.error(`Invalid URL: ${url}`, error);
       
-      // Try to extract domain from malformed URL as fallback
+      // Advanced fallback mechanism for improperly formatted URLs
       try {
-        // Simple regex to try to extract domain from malformed URL
-        const domainMatch = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\s]+\.\w+)/i);
+        // Extract domain parts from malformed URL
+        const domainMatch = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\s]+\.[a-z]{2,})/i);
         if (domainMatch && domainMatch[0]) {
-          return 'https://' + domainMatch[0];
+          const domain = domainMatch[0];
+          return domain.startsWith('http') ? domain : 'https://' + domain;
         }
-      } catch (e) { /* Silently fail fallback attempt */ }
+        
+        // If we can identify a common news domain in the string, use that
+        const commonDomains = [
+          'clarin.com', 'lanacion.com.ar', 'infobae.com', 'pagina12.com.ar', 
+          'ambito.com', 'perfil.com', 'cronista.com', 'telam.com.ar'
+        ];
+        
+        for (const domain of commonDomains) {
+          if (url.includes(domain)) {
+            return `https://www.${domain}`;
+          }
+        }
+      } catch (e) { /* Silent fallback failure */ }
       
-      // If all fails, return a safe default
-      return 'https://www.google.com/search?q=' + encodeURIComponent(news.title);
+      // Last resort - search for the title
+      return `https://www.google.com/search?q=${encodeURIComponent(news.title)}`;
     }
   };
 
@@ -56,6 +79,9 @@ const NewsCard = ({ news }: NewsCardProps) => {
     }
   };
 
+  const validUrl = getValidUrl(news.sourceUrl);
+  const isValidUrl = validUrl !== '#' && !validUrl.startsWith('https://www.google.com/search');
+
   return (
     <Card className="h-full flex flex-col hover:shadow-md transition-shadow duration-200">
       <CardHeader className="pb-2">
@@ -63,10 +89,19 @@ const NewsCard = ({ news }: NewsCardProps) => {
           <div className="text-sm text-muted-foreground">
             {formatDate(news.date)}
           </div>
-          <Badge variant="outline" className="flex items-center">
-            <Globe className="h-3 w-3 mr-1" />
-            {news.sourceName}
-          </Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="flex items-center">
+                  <Globe className="h-3 w-3 mr-1" />
+                  {news.sourceName}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{new URL(validUrl).hostname}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <CardTitle className="text-lg line-clamp-2">{news.title}</CardTitle>
       </CardHeader>
@@ -84,14 +119,14 @@ const NewsCard = ({ news }: NewsCardProps) => {
       </CardContent>
       <CardFooter className="pt-2">
         <a 
-          href={getValidUrl(news.sourceUrl)} 
+          href={validUrl} 
           target="_blank" 
           rel="noopener noreferrer"
           className="w-full"
         >
-          <Button variant="outline" className="w-full">
+          <Button variant="outline" className={`w-full ${!isValidUrl ? 'text-muted-foreground' : ''}`}>
             <ExternalLink className="h-4 w-4 mr-2" />
-            Ver noticia original
+            {isValidUrl ? 'Ver noticia original' : 'Buscar noticia en Google'}
           </Button>
         </a>
       </CardFooter>
