@@ -281,17 +281,31 @@ class NewsService {
   }
 
   /**
-   * Search for news with specific query
+   * Search for news with specific query or keywords
    */
-  static async searchNews(query: string, source?: string): Promise<NewsItem[]> {
+  static async searchNews(query: string, source?: string, additionalKeywords?: string[]): Promise<NewsItem[]> {
     try {
-      if (!query || query.trim() === "") {
+      // If query is empty but we have additional keywords, use those
+      if ((!query || query.trim() === "") && (!additionalKeywords || additionalKeywords.length === 0)) {
         return this.getNews();
+      }
+      
+      // Prepare keywords array from query and additional keywords
+      const keywords: string[] = [];
+      
+      // Add query if it exists
+      if (query && query.trim() !== "") {
+        keywords.push(query.trim());
+      }
+      
+      // Add additional keywords if they exist
+      if (additionalKeywords && additionalKeywords.length > 0) {
+        keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
       }
       
       // If we're using the Python scraper, search with it
       if (USE_PYTHON_SCRAPER) {
-        console.log(`Searching for "${query}" using Python scraper`);
+        console.log(`Searching for ${keywords.join(', ')} using Python scraper`);
         let sources: string[] | undefined;
         
         if (source) {
@@ -305,22 +319,24 @@ class NewsService {
         }
         
         return fetchNewsFromPythonScript({
-          keywords: [query],
+          keywords: keywords,
           sources: sources,
           includeTwitter: this.getSearchSettings().includeTwitter,
-          maxResults: this.getSearchSettings().maxResults
+          maxResults: this.getSearchSettings().maxResults,
+          validateLinks: true, // Add validation of links
+          currentDateOnly: true // Only fetch news from today
         });
       }
 
       // If not using Python scraper, fall back to existing search method
       if (!USE_MOCK_DATA) {
-        return this.getNewsFromRealSources([query]);
+        return this.getNewsFromRealSources(keywords);
       }
       
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      console.log(`Buscando noticias con términos: "${query}"`);
+      console.log(`Buscando noticias con términos: "${keywords.join(', ')}"`);
       
       // Filtering mock news data
       const allNews = Array.isArray(mockNews) ? mockNews : [];
@@ -329,11 +345,15 @@ class NewsService {
       let filteredNews = allNews.filter(item => {
         if (!item) return false;
         
-        const titleContainsQuery = item.title.toLowerCase().includes(query.toLowerCase());
-        const summaryContainsQuery = item.summary.toLowerCase().includes(query.toLowerCase());
-        const sourceContainsQuery = item.sourceName.toLowerCase().includes(query.toLowerCase());
-        
-        return titleContainsQuery || summaryContainsQuery || sourceContainsQuery;
+        // Check if any keyword matches the title, summary or source name
+        return keywords.some(keyword => {
+          const normalizedKeyword = keyword.toLowerCase();
+          const titleContainsKeyword = item.title.toLowerCase().includes(normalizedKeyword);
+          const summaryContainsKeyword = item.summary.toLowerCase().includes(normalizedKeyword);
+          const sourceContainsKeyword = item.sourceName.toLowerCase().includes(normalizedKeyword);
+          
+          return titleContainsKeyword || summaryContainsKeyword || sourceContainsKeyword;
+        });
       });
       
       // If source is provided, filter by it
@@ -603,7 +623,9 @@ class NewsService {
       return fetchNewsFromPythonScript({
         keywords: keywords || [],
         includeTwitter: this.getSearchSettings().includeTwitter,
-        maxResults: this.getSearchSettings().maxResults
+        maxResults: this.getSearchSettings().maxResults,
+        validateLinks: true, // Add validation of links
+        currentDateOnly: true // Only fetch news from today
       });
     }
     

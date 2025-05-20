@@ -8,6 +8,7 @@ export interface NewsItem {
   sourceName: string;
   imageUrl?: string;
   topics: string[];
+  linkValid?: boolean; // Indica si el enlace ha sido validado
 }
 
 export interface NewsSource {
@@ -45,6 +46,8 @@ export interface SearchSettings {
   maxResults: number;
   includeTwitter: boolean;
   keywords: string[];
+  validateLinks?: boolean; // Validar que los enlaces sean válidos
+  currentDateOnly?: boolean; // Solo noticias del día actual
 }
 
 export interface NewsFeedResponse {
@@ -58,6 +61,7 @@ export interface PythonScriptNews {
   fecha: string;
   url: string;
   resumen: string;
+  linkValido?: boolean; // Indicar si el enlace es válido
 }
 
 export interface PythonScriptResponse {

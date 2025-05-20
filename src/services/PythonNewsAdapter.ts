@@ -22,6 +22,7 @@ interface PythonNewsResponse {
     fecha: string;
     url: string;
     resumen: string;
+    linkValido?: boolean;
   }[];
   error?: string;
 }
@@ -34,6 +35,8 @@ export interface NewsSearchOptions {
   sources?: string[];
   includeTwitter?: boolean;
   maxResults?: number;
+  validateLinks?: boolean;
+  currentDateOnly?: boolean;
 }
 
 /**
@@ -46,31 +49,36 @@ const mockPythonResponse: PythonNewsResponse = {
       titulo: "Kicillof anunció nuevas medidas económicas para la provincia",
       fecha: new Date().toISOString(),
       url: "https://www.clarin.com/politica/axel-kicillof-anuncio-nuevas-medidas-economicas-provincia_0_abc123.html",
-      resumen: "El gobernador Axel Kicillof presentó un paquete de medidas económicas destinadas a contrarrestar los efectos de la inflación en la provincia de Buenos Aires."
+      resumen: "El gobernador Axel Kicillof presentó un paquete de medidas económicas destinadas a contrarrestar los efectos de la inflación en la provincia de Buenos Aires.",
+      linkValido: true
     },
     {
       titulo: "Verónica Magario participó en el debate sobre el presupuesto provincial",
       fecha: new Date().toISOString(),
       url: "https://www.lanacion.com.ar/politica/veronica-magario-participo-debate-presupuesto-provincial-nid123456/",
-      resumen: "La vicegobernadora Verónica Magario presidió la sesión del Senado bonaerense donde se debatió el presupuesto 2025 para la provincia de Buenos Aires."
+      resumen: "La vicegobernadora Verónica Magario presidió la sesión del Senado bonaerense donde se debatió el presupuesto 2025 para la provincia de Buenos Aires.",
+      linkValido: true
     },
     {
       titulo: "El Senado provincial aprobó la ley de emergencia económica",
       fecha: new Date().toISOString(),
       url: "https://www.pagina12.com.ar/senado-buenos-aires-ley-emergencia-economica-555666",
-      resumen: "Con amplia mayoría, el Senado de la provincia de Buenos Aires aprobó la ley de emergencia económica impulsada por el gobierno de Axel Kicillof."
+      resumen: "Con amplia mayoría, el Senado de la provincia de Buenos Aires aprobó la ley de emergencia económica impulsada por el gobierno de Axel Kicillof.",
+      linkValido: true
     },
     {
       titulo: "Tensión entre Nación y Provincia por los fondos educativos",
       fecha: new Date().toISOString(),
       url: "https://www.infobae.com/politica/2025/05/18/tension-nacion-provincia-fondos-educativos/",
-      resumen: "Crecen las tensiones entre el gobierno nacional y la provincia de Buenos Aires por el reparto de fondos destinados a educación."
+      resumen: "Crecen las tensiones entre el gobierno nacional y la provincia de Buenos Aires por el reparto de fondos destinados a educación.",
+      linkValido: true
     },
     {
       titulo: "Espinosa criticó las políticas económicas del gobierno nacional",
       fecha: new Date().toISOString(),
       url: "https://www.ambito.com/politica/espinosa-critico-las-politicas-economicas-del-gobierno-nacional-n5123456",
-      resumen: "El diputado Fernando Espinosa criticó duramente las políticas económicas implementadas por el gobierno nacional y su impacto en los municipios bonaerenses."
+      resumen: "El diputado Fernando Espinosa criticó duramente las políticas económicas implementadas por el gobierno nacional y su impacto en los municipios bonaerenses.",
+      linkValido: true
     }
   ]
 };
@@ -83,7 +91,35 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
     if (API_CONFIG.useLocalMock) {
       // Return mock data for local development
       console.log("Using mock data for Python script response");
-      return transformPythonResponseToNewsItems(mockPythonResponse);
+      // If validateLinks is true, filter only valid links
+      const mockData = { ...mockPythonResponse };
+      
+      // Filter news by keywords if provided
+      if (options.keywords?.length) {
+        const keywords = options.keywords.map(k => k.toLowerCase());
+        mockData.data = mockData.data?.filter(item => 
+          keywords.some(keyword => 
+            (item.titulo?.toLowerCase().includes(keyword) || 
+             item.resumen?.toLowerCase().includes(keyword))
+          )
+        );
+      }
+      
+      // Filter by date if currentDateOnly is true
+      if (options.currentDateOnly) {
+        const today = new Date().toISOString().split('T')[0];
+        mockData.data = mockData.data?.filter(item => {
+          const itemDate = new Date(item.fecha).toISOString().split('T')[0];
+          return itemDate === today;
+        });
+      }
+      
+      // Filter by valid links if validateLinks is true
+      if (options.validateLinks) {
+        mockData.data = mockData.data?.filter(item => item.linkValido !== false);
+      }
+      
+      return transformPythonResponseToNewsItems(mockData);
     }
 
     // Prepare the request parameters
@@ -99,6 +135,12 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
     }
     if (options.maxResults) {
       params.append('max_results', options.maxResults.toString());
+    }
+    if (options.validateLinks !== undefined) {
+      params.append('validate_links', options.validateLinks.toString());
+    }
+    if (options.currentDateOnly !== undefined) {
+      params.append('current_date_only', options.currentDateOnly.toString());
     }
 
     // Make the API request
@@ -130,7 +172,12 @@ function transformPythonResponseToNewsItems(response: PythonNewsResponse): NewsI
     return [];
   }
   
-  return response.data.map((item, index) => {
+  // Filter out items with invalid links if they have linkValido property
+  const validItems = response.data.filter(item => 
+    item.linkValido === undefined || item.linkValido !== false
+  );
+  
+  return validItems.map((item, index) => {
     try {
       // Extract domain for sourceName
       let sourceName = '';
@@ -166,6 +213,28 @@ function transformPythonResponseToNewsItems(response: PythonNewsResponse): NewsI
       };
     }
   });
+}
+
+/**
+ * Validate if a URL is valid and working
+ * This is a client-side validation, actual validation should be done server-side
+ */
+export async function validateUrl(url: string): Promise<boolean> {
+  try {
+    // For mock environment, always return true
+    if (API_CONFIG.useLocalMock) {
+      return true;
+    }
+    
+    // In a real application, we would use a server-side function to check
+    // Since we can't make cross-origin HEAD requests directly from the browser
+    const response = await fetch(`${PYTHON_API_ENDPOINT}/validate?url=${encodeURIComponent(url)}`);
+    const data = await response.json();
+    return data.valid === true;
+  } catch (error) {
+    console.error("Error validating URL:", error);
+    return false;
+  }
 }
 
 /**
@@ -212,5 +281,6 @@ function inferTopicsFromText(text: string): string[] {
 }
 
 export default {
-  fetchNewsFromPythonScript
+  fetchNewsFromPythonScript,
+  validateUrl
 };
