@@ -596,7 +596,8 @@ class NewsService {
     }
   }
 
-  static getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
+  // Make this method async to properly use await
+  static async getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
     // This function is now replaced by the Python scraper
     if (USE_PYTHON_SCRAPER) {
       return fetchNewsFromPythonScript({
