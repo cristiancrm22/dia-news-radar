@@ -10,15 +10,14 @@ import NotFound from "./pages/NotFound";
 
 const App = () => {
   // Create a new QueryClient instance for each component render
-  // This prevents the "useEffect" null error
   const [queryClient] = useState(() => new QueryClient());
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
+      <TooltipProvider delayDuration={300}>
         <BrowserRouter>
+          <Toaster />
+          <Sonner />
           <Routes>
             <Route path="/" element={<Index />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

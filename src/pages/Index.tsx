@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw, mail } from "lucide-react";
+import { Search, RefreshCw, Mail } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
