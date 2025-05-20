@@ -1,5 +1,8 @@
+import { NewsItem, NewsSource, Topic, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 
-import { NewsItem, NewsSource, Topic, WhatsAppConfig } from "@/types/news";
+// Configuración de la API
+const API_ENDPOINT = '/api'; // En producción, configurar el endpoint correcto
+const USE_MOCK_DATA = true; // Cambiar a false en producción
 
 // Ampliando los datos de prueba para búsquedas más diversas y asegurando URLs correctas
 const mockNews: NewsItem[] = [
@@ -158,10 +161,28 @@ const defaultWhatsAppConfig: WhatsAppConfig = {
   evolutionApiUrl: ""
 };
 
+// Default email config
+const defaultEmailConfig: EmailConfig = {
+  enabled: false,
+  email: "",
+  frequency: "daily",
+  time: "08:00",
+  keywords: []
+};
+
+// Default search settings
+const defaultSearchSettings: SearchSettings = {
+  maxResults: 50,
+  includeTwitter: true,
+  keywords: ["Magario", "Kicillof", "Espinosa"]
+};
+
 // LocalStorage keys
 const SOURCES_KEY = 'news_radar_sources';
 const TOPICS_KEY = 'news_radar_topics';
 const WHATSAPP_CONFIG_KEY = 'news_radar_whatsapp_config';
+const EMAIL_CONFIG_KEY = 'news_radar_email_config';
+const SEARCH_SETTINGS_KEY = 'news_radar_search_settings';
 
 // Utility functions for text processing
 const textUtils = {
@@ -218,16 +239,123 @@ const textUtils = {
 };
 
 class NewsService {
+  // Fetch news from real sources using the Python script as an API
+  static async getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
+    if (USE_MOCK_DATA) {
+      // Return mock data when in development
+      return this.getNews();
+    }
+    
+    try {
+      // Define search parameters
+      const searchParams = new URLSearchParams();
+      
+      if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+        searchParams.append('keywords', keywords.join(','));
+      }
+      
+      // Fetch from the API endpoint
+      const response = await fetch(`${API_ENDPOINT}/news?${searchParams.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!Array.isArray(data)) {
+        throw new Error('Invalid data format');
+      }
+      
+      // Transform the API response to match our NewsItem interface
+      const newsItems: NewsItem[] = data.map((item: any) => ({
+        id: item.id || String(Math.random()),
+        title: item.titulo || item.title || 'Sin título',
+        summary: item.resumen || item.summary || '',
+        date: item.fecha || item.date || new Date().toISOString(),
+        sourceUrl: item.url || '#',
+        sourceName: this.extractSourceNameFromUrl(item.url || '') || 'Fuente desconocida',
+        topics: this.inferTopicsFromText(item.titulo + ' ' + item.resumen),
+      }));
+      
+      return newsItems;
+    } catch (error) {
+      console.error('Error fetching news from API:', error);
+      return this.getNews(); // Fallback to mock data
+    }
+  }
+
+  // Extract source name from URL
+  private static extractSourceNameFromUrl(url: string): string {
+    try {
+      if (!url) return '';
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.replace('www.', '');
+      
+      // Extract the main domain name (e.g., clarin.com from www.clarin.com.ar)
+      const domainParts = hostname.split('.');
+      if (domainParts.length >= 2) {
+        return domainParts[domainParts.length - 2];
+      }
+      return hostname;
+    } catch {
+      return '';
+    }
+  }
+
+  // Infer topics from text based on keywords
+  private static inferTopicsFromText(text: string): string[] {
+    const topics: string[] = [];
+    
+    // Simple topic inference rules
+    if (/econom[íi]a|inflaci[óo]n|d[óo]lar|finanzas|presupuesto/i.test(text)) {
+      topics.push('Economía');
+    }
+    
+    if (/pol[íi]tica|gobierno|presidente|ministro|diputado|senador|candidato|elecci[óo]n/i.test(text)) {
+      topics.push('Política');
+    }
+    
+    if (/senado|legislatura|parlamento|c[áa]mara|congreso/i.test(text)) {
+      topics.push('Legislativo');
+    }
+    
+    if (/kicillof|axel|gobernador/i.test(text)) {
+      topics.push('Gobierno Provincial');
+    }
+    
+    if (/magario|ver[óo]nica|vicegobernadora/i.test(text)) {
+      topics.push('Gobierno Provincial');
+    }
+    
+    // Ensure we have at least one topic
+    if (topics.length === 0) {
+      topics.push('General');
+    }
+    
+    return topics;
+  }
+
   // Get all news (would be replaced with actual API calls in production)
-  static getNews(): Promise<NewsItem[]> {
-    // Simulate API call delay
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Ensure we have valid data
-        const validNews = Array.isArray(mockNews) ? mockNews : [];
-        resolve(validNews);
-      }, 500); // Reduced delay for better UX
-    });
+  static async getNews(): Promise<NewsItem[]> {
+    try {
+      const settings = this.getSearchSettings();
+      if (!USE_MOCK_DATA) {
+        return this.getNewsFromRealSources(settings.keywords);
+      }
+      
+      // Simulate API call delay
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          // Ensure we have valid data
+          const validNews = Array.isArray(mockNews) ? mockNews : [];
+          resolve(validNews);
+        }, 500); // Reduced delay for better UX
+      });
+    } catch (error) {
+      console.error("Error fetching news:", error);
+      return [];
+    }
   }
 
   // Versión mejorada y optimizada de búsqueda
@@ -235,6 +363,11 @@ class NewsService {
     try {
       if (!query || query.trim() === "") {
         return this.getNews();
+      }
+      
+      if (!USE_MOCK_DATA) {
+        // If we're using real API, do a direct search
+        return this.getNewsFromRealSources([query]);
       }
       
       // Simula un retraso de API
@@ -409,6 +542,65 @@ class NewsService {
   // Update WhatsApp config in localStorage
   static updateWhatsAppConfig(config: WhatsAppConfig): void {
     localStorage.setItem(WHATSAPP_CONFIG_KEY, JSON.stringify(config));
+  }
+
+  // Get Email config from localStorage or defaults
+  static getEmailConfig(): EmailConfig {
+    try {
+      const savedConfig = localStorage.getItem(EMAIL_CONFIG_KEY);
+      return savedConfig ? JSON.parse(savedConfig) : defaultEmailConfig;
+    } catch (error) {
+      console.error("Error loading email config:", error);
+      return defaultEmailConfig;
+    }
+  }
+
+  // Update Email config in localStorage
+  static updateEmailConfig(config: EmailConfig): void {
+    localStorage.setItem(EMAIL_CONFIG_KEY, JSON.stringify(config));
+  }
+
+  // Get search settings from localStorage or defaults
+  static getSearchSettings(): SearchSettings {
+    try {
+      const savedSettings = localStorage.getItem(SEARCH_SETTINGS_KEY);
+      return savedSettings ? JSON.parse(savedSettings) : defaultSearchSettings;
+    } catch (error) {
+      console.error("Error loading search settings:", error);
+      return defaultSearchSettings;
+    }
+  }
+
+  // Update search settings in localStorage
+  static updateSearchSettings(settings: SearchSettings): void {
+    localStorage.setItem(SEARCH_SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  // Test email service 
+  static async testEmailService(email: string): Promise<boolean> {
+    if (USE_MOCK_DATA) {
+      // Simulate API call
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(true);
+        }, 1000);
+      });
+    }
+    
+    try {
+      const response = await fetch(`${API_ENDPOINT}/email/test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+      
+      return response.ok;
+    } catch (error) {
+      console.error("Error testing email service:", error);
+      return false;
+    }
   }
 
   // Send a WhatsApp message

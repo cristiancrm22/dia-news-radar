@@ -31,3 +31,18 @@ export interface WhatsAppConfig {
   connectionMethod: "official" | "evolution" | "businesscloud";
   evolutionApiUrl?: string;
 }
+
+export interface EmailConfig {
+  enabled: boolean;
+  email: string;
+  frequency: "daily" | "weekly";
+  time: string;
+  keywords: string[];
+  lastSent?: string;
+}
+
+export interface SearchSettings {
+  maxResults: number;
+  includeTwitter: boolean;
+  keywords: string[];
+}

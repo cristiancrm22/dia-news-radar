@@ -3,12 +3,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, mail } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
 import TopicsConfig from "@/components/TopicsConfig";
 import WhatsAppConfig from "@/components/WhatsAppConfig";
+import EmailConfig from "@/components/EmailConfig";
 import NewsService from "@/services/NewsService";
 import { NewsItem } from "@/types/news";
 
@@ -106,11 +107,12 @@ const Index = () => {
       </header>
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-        <TabsList className="grid grid-cols-4 mb-8">
+        <TabsList className="grid grid-cols-5 mb-8">
           <TabsTrigger value="noticias">Noticias</TabsTrigger>
           <TabsTrigger value="fuentes">Fuentes</TabsTrigger>
           <TabsTrigger value="temas">Temas</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="email">Email</TabsTrigger>
         </TabsList>
 
         <TabsContent value="noticias">
@@ -181,6 +183,10 @@ const Index = () => {
 
         <TabsContent value="whatsapp">
           <WhatsAppConfig />
+        </TabsContent>
+        
+        <TabsContent value="email">
+          <EmailConfig />
         </TabsContent>
       </Tabs>
     </div>

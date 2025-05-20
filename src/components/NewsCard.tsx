@@ -10,18 +10,33 @@ interface NewsCardProps {
 }
 
 const NewsCard = ({ news }: NewsCardProps) => {
-  // Ensure URL has proper format
+  // Ensure URL has proper format with more robust validation
   const getValidUrl = (url: string): string => {
+    if (!url || typeof url !== 'string') return '#';
+    
     try {
       // Check if URL already has http/https
       if (!/^https?:\/\//i.test(url)) {
         url = 'https://' + url;
       }
-      return new URL(url).toString();
+      
+      // Use URL constructor to validate
+      const validatedUrl = new URL(url).toString();
+      return validatedUrl;
     } catch (error) {
       console.error(`Invalid URL: ${url}`, error);
-      // Return a fallback URL or the original if parsing fails
-      return url;
+      
+      // Try to extract domain from malformed URL as fallback
+      try {
+        // Simple regex to try to extract domain from malformed URL
+        const domainMatch = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\s]+\.\w+)/i);
+        if (domainMatch && domainMatch[0]) {
+          return 'https://' + domainMatch[0];
+        }
+      } catch (e) { /* Silently fail fallback attempt */ }
+      
+      // If all fails, return a safe default
+      return 'https://www.google.com/search?q=' + encodeURIComponent(news.title);
     }
   };
 
