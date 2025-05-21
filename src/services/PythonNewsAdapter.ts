@@ -36,7 +36,7 @@ export interface NewsSearchOptions {
   maxResults?: number;
   validateLinks?: boolean;
   currentDateOnly?: boolean;
-  deepScrape?: boolean; // New option to enable deep scraping of internal pages
+  deepScrape?: boolean;
 }
 
 /**
@@ -105,8 +105,32 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
     if (API_CONFIG.useLocalMock) {
       // Return mock data for local development
       console.log("Using mock data for Python script response with options:", options);
-      // If validateLinks is true, filter only valid links
-      const mockData = { ...mockPythonResponse };
+      // Create a deep copy of mock data
+      const mockData = JSON.parse(JSON.stringify(mockPythonResponse));
+      
+      // Filter news by sources if provided
+      if (options.sources && options.sources.length > 0) {
+        console.log("Filtering by sources:", options.sources);
+        mockData.data = mockData.data?.filter(item => {
+          try {
+            const itemUrl = new URL(item.url);
+            // Check if the item URL contains any of the source URLs
+            return options.sources?.some(sourceUrl => {
+              try {
+                const source = new URL(sourceUrl);
+                return itemUrl.hostname.includes(source.hostname) || 
+                       source.hostname.includes(itemUrl.hostname);
+              } catch {
+                // If the source URL is invalid, try simple string matching
+                return item.url.includes(sourceUrl);
+              }
+            });
+          } catch {
+            // If parsing URL fails, fall back to simple string matching
+            return options.sources?.some(sourceUrl => item.url.includes(sourceUrl));
+          }
+        });
+      }
       
       // Filter news by keywords if provided
       if (options.keywords?.length) {
@@ -156,7 +180,6 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
     if (options.currentDateOnly !== undefined) {
       params.append('current_date_only', options.currentDateOnly.toString());
     }
-    // Add deep scrape parameter
     if (options.deepScrape !== undefined) {
       params.append('deep_scrape', options.deepScrape.toString());
     }

@@ -1,3 +1,4 @@
+
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 import PythonNewsAdapter, { fetchNewsFromPythonScript } from './PythonNewsAdapter';
 
@@ -239,17 +240,22 @@ class NewsService {
   static async getNews(): Promise<NewsItem[]> {
     try {
       const settings = this.getSearchSettings();
+      // Get enabled sources
+      const enabledSources = this.getSources().filter(source => source.enabled);
+      const sourceUrls = enabledSources.map(source => source.url);
       
       // Check if we should use the Python scraper
       if (USE_PYTHON_SCRAPER) {
         console.log("Using Python scraper for news with settings:", settings);
+        console.log("Using enabled sources:", enabledSources.map(s => s.name));
         return fetchNewsFromPythonScript({
           keywords: settings.keywords,
+          sources: sourceUrls, // Pass the enabled sources URLs
           includeTwitter: settings.includeTwitter,
           maxResults: settings.maxResults,
           validateLinks: settings.validateLinks,
           currentDateOnly: settings.currentDateOnly,
-          deepScrape: settings.deepScrape // Pass deep scrape option
+          deepScrape: settings.deepScrape
         });
       }
       
