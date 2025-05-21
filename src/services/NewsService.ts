@@ -1,4 +1,3 @@
-
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 import PythonNewsAdapter, { fetchNewsFromPythonScript } from './PythonNewsAdapter';
 
@@ -398,22 +397,6 @@ class NewsService {
   // Update sources in localStorage
   static updateSources(sources: NewsSource[]): void {
     localStorage.setItem(SOURCES_KEY, JSON.stringify(sources));
-  }
-
-  // Get topics from localStorage or defaults
-  static getTopics(): Topic[] {
-    try {
-      const savedTopics = localStorage.getItem(TOPICS_KEY);
-      return savedTopics ? JSON.parse(savedTopics) : defaultTopics;
-    } catch (error) {
-      console.error("Error loading topics:", error);
-      return defaultTopics;
-    }
-  }
-
-  // Update topics in localStorage
-  static updateTopics(topics: Topic[]): void {
-    localStorage.setItem(TOPICS_KEY, JSON.stringify(topics));
   }
 
   // Get WhatsApp config from localStorage or defaults
