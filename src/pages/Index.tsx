@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Clock } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
@@ -11,6 +11,8 @@ import EmailConfig from "@/components/EmailConfig";
 import KeywordsConfig from "@/components/KeywordsConfig";
 import NewsService from "@/services/NewsService";
 import { NewsItem, NewsSource } from "@/types/news";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 const Index = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -20,6 +22,7 @@ const Index = () => {
   const [todayOnly, setTodayOnly] = useState(true);
   const [validateLinks, setValidateLinks] = useState(true);
   const [keywords, setKeywords] = useState<string[]>([]);
+  const [lastSearchTime, setLastSearchTime] = useState<Date | null>(null);
 
   useEffect(() => {
     // Fetch news on component mount
@@ -63,6 +66,9 @@ const Index = () => {
       
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
+      // Update the last search time
+      setLastSearchTime(new Date());
+      
       toast({
         title: "Noticias actualizadas",
         description: `Se cargaron ${fetchedNews.length} noticias`,
@@ -82,6 +88,12 @@ const Index = () => {
 
   // Aseguramos que news siempre es un array para evitar errores
   const safeNews = Array.isArray(news) ? news : [];
+
+  // Format the last search time
+  const formatLastSearchTime = () => {
+    if (!lastSearchTime) return "Nunca";
+    return format(lastSearchTime, "dd/MM/yyyy HH:mm:ss", { locale: es });
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -113,6 +125,10 @@ const Index = () => {
                     Filtrando por: {keywords.join(', ')}
                   </p>
                 )}
+                <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                  <Clock className="h-4 w-4" />
+                  <span>Última actualización: {formatLastSearchTime()}</span>
+                </div>
               </div>
               <Button 
                 variant="default" 
