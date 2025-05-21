@@ -41,10 +41,11 @@ const defaultEmailConfig: EmailConfig = {
 const defaultSearchSettings: SearchSettings = {
   maxResults: 50,
   includeTwitter: true,
-  keywords: ["Magario", "Kicillof", "Espinosa"],
+  keywords: ["Magario", "Kicillof", "Espinosa", "Milei"],
   validateLinks: true,
   currentDateOnly: true,
-  searchHistory: []
+  searchHistory: [],
+  deepScrape: true  // Enable deep scraping by default
 };
 
 // Mock news data for when not using the Python scraper
@@ -241,11 +242,14 @@ class NewsService {
       
       // Check if we should use the Python scraper
       if (USE_PYTHON_SCRAPER) {
-        console.log("Using Python scraper for news");
+        console.log("Using Python scraper for news with settings:", settings);
         return fetchNewsFromPythonScript({
           keywords: settings.keywords,
           includeTwitter: settings.includeTwitter,
-          maxResults: settings.maxResults
+          maxResults: settings.maxResults,
+          validateLinks: settings.validateLinks,
+          currentDateOnly: settings.currentDateOnly,
+          deepScrape: settings.deepScrape // Pass deep scrape option
         });
       }
       
@@ -308,13 +312,16 @@ class NewsService {
             .map(s => s.url);
         }
         
+        const settings = this.getSearchSettings();
+        
         return fetchNewsFromPythonScript({
           keywords: keywords,
           sources: sources,
-          includeTwitter: this.getSearchSettings().includeTwitter,
-          maxResults: this.getSearchSettings().maxResults,
-          validateLinks: this.getSearchSettings().validateLinks,
-          currentDateOnly: this.getSearchSettings().currentDateOnly
+          includeTwitter: settings.includeTwitter,
+          maxResults: settings.maxResults,
+          validateLinks: settings.validateLinks,
+          currentDateOnly: settings.currentDateOnly,
+          deepScrape: settings.deepScrape // Pass deep scrape option
         });
       }
 
@@ -617,12 +624,14 @@ class NewsService {
   static async getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
     // This function is now replaced by the Python scraper
     if (USE_PYTHON_SCRAPER) {
+      const settings = this.getSearchSettings();
       return fetchNewsFromPythonScript({
         keywords: keywords || [],
-        includeTwitter: this.getSearchSettings().includeTwitter,
-        maxResults: this.getSearchSettings().maxResults,
-        validateLinks: true, // Add validation of links
-        currentDateOnly: true // Only fetch news from today
+        includeTwitter: settings.includeTwitter,
+        maxResults: settings.maxResults,
+        validateLinks: settings.validateLinks,
+        currentDateOnly: settings.currentDateOnly,
+        deepScrape: settings.deepScrape // Pass deep scrape option
       });
     }
     

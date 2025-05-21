@@ -1,8 +1,10 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Clock } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { Progress } from "@/components/ui/progress";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
 import WhatsAppConfig from "@/components/WhatsAppConfig";
@@ -15,7 +17,8 @@ import { es } from "date-fns/locale/es";
 
 const Index = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
   const [selectedTab, setSelectedTab] = useState("noticias");
   const [includeTwitter, setIncludeTwitter] = useState(true);
   const [todayOnly, setTodayOnly] = useState(true);
@@ -47,6 +50,18 @@ const Index = () => {
 
   const fetchNews = async () => {
     setLoading(true);
+    setSearchProgress(0);
+    
+    // Set up progress tracking
+    const progressInterval = setInterval(() => {
+      setSearchProgress(prev => {
+        // Simulate progress up to 90% (the final 10% will be set when complete)
+        if (prev < 90) {
+          return prev + 5;
+        }
+        return prev;
+      });
+    }, 500);
     
     try {
       // Update search settings with the current keywords
@@ -60,13 +75,17 @@ const Index = () => {
         includeTwitter: includeTwitter,
         keywords: latestSettings.keywords || [],
         currentDateOnly: todayOnly,
-        validateLinks: validateLinks
+        validateLinks: validateLinks,
+        deepScrape: true // Enable deep scraping of internal pages
       });
       
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
       // Update the last search time
       setLastSearchTime(new Date());
+      
+      // Complete the progress bar
+      setSearchProgress(100);
       
       toast({
         title: "Noticias actualizadas",
@@ -81,7 +100,15 @@ const Index = () => {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      clearInterval(progressInterval);
+      // Ensure progress bar is complete
+      setSearchProgress(100);
+      
+      // Reset progress after a delay
+      setTimeout(() => {
+        setSearchProgress(0);
+        setLoading(false);
+      }, 500);
     }
   };
 
@@ -116,31 +143,41 @@ const Index = () => {
 
         <TabsContent value="noticias">
           <div className="flex flex-col space-y-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-xl font-bold">Noticias Monitoreadas</h2>
-                {keywords.length > 0 && (
-                  <p className="text-gray-500 text-sm mt-1">
-                    Filtrando por: {keywords.join(', ')}
-                  </p>
-                )}
-                <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
-                  <Clock className="h-4 w-4" />
-                  <span>Última actualización: {formatLastSearchTime()}</span>
+            <div className="flex flex-col mb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold">Noticias Monitoreadas</h2>
+                  {keywords.length > 0 && (
+                    <p className="text-gray-500 text-sm mt-1">
+                      Filtrando por: {keywords.join(', ')}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                    <Clock className="h-4 w-4" />
+                    <span>Última actualización: {formatLastSearchTime()}</span>
+                  </div>
                 </div>
+                <Button 
+                  variant="default" 
+                  className="flex gap-2"
+                  onClick={fetchNews}
+                  disabled={loading}
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  Actualizar
+                </Button>
               </div>
-              <Button 
-                variant="default" 
-                className="flex gap-2"
-                onClick={fetchNews}
-                disabled={loading}
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Actualizar
-              </Button>
+              
+              {/* Progress bar that shows during search */}
+              {loading && searchProgress > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm text-gray-500 mb-1">Buscando noticias en todos los portales...</p>
+                  <Progress value={searchProgress} className="h-2" />
+                </div>
+              )}
             </div>
 
-            {loading ? (
+            {loading && searchProgress < 100 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <div key={i} className="h-[220px] bg-gray-100 rounded-lg animate-pulse"></div>

@@ -1,4 +1,3 @@
-
 /**
  * Service to communicate with the Python news scraper
  */
@@ -37,6 +36,7 @@ export interface NewsSearchOptions {
   maxResults?: number;
   validateLinks?: boolean;
   currentDateOnly?: boolean;
+  deepScrape?: boolean; // New option to enable deep scraping of internal pages
 }
 
 /**
@@ -79,6 +79,20 @@ const mockPythonResponse: PythonNewsResponse = {
       url: "https://www.ambito.com/politica/espinosa-critico-las-politicas-economicas-del-gobierno-nacional-n5123456",
       resumen: "El diputado Fernando Espinosa criticó duramente las políticas económicas implementadas por el gobierno nacional y su impacto en los municipios bonaerenses.",
       linkValido: true
+    },
+    {
+      titulo: "Milei anunció nuevas medidas para reducir el gasto público",
+      fecha: new Date().toISOString(),
+      url: "https://www.latecla.info/politica/milei-anuncio-nuevas-medidas-reducir-gasto-publico",
+      resumen: "El presidente Javier Milei presentó un paquete de medidas destinadas a reducir significativamente el gasto público y optimizar la administración estatal.",
+      linkValido: true
+    },
+    {
+      titulo: "Milei criticó duramente a los gobernadores provinciales",
+      fecha: new Date().toISOString(),
+      url: "https://www.latecla.info/politica/milei-critico-duramente-gobernadores-provinciales",
+      resumen: "En una conferencia de prensa, el presidente Milei criticó la gestión de varios gobernadores provinciales y los acusó de no querer reducir gastos innecesarios.",
+      linkValido: true
     }
   ]
 };
@@ -90,7 +104,7 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
   try {
     if (API_CONFIG.useLocalMock) {
       // Return mock data for local development
-      console.log("Using mock data for Python script response");
+      console.log("Using mock data for Python script response with options:", options);
       // If validateLinks is true, filter only valid links
       const mockData = { ...mockPythonResponse };
       
@@ -141,6 +155,10 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
     }
     if (options.currentDateOnly !== undefined) {
       params.append('current_date_only', options.currentDateOnly.toString());
+    }
+    // Add deep scrape parameter
+    if (options.deepScrape !== undefined) {
+      params.append('deep_scrape', options.deepScrape.toString());
     }
 
     // Make the API request

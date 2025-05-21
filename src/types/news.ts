@@ -1,4 +1,3 @@
-
 export interface NewsItem {
   id: string;
   title: string;
@@ -37,12 +36,13 @@ export interface EmailConfig {
 }
 
 export interface SearchSettings {
-  maxResults: number;
-  includeTwitter: boolean;
+  maxResults?: number;
+  includeTwitter?: boolean;
   keywords: string[];
   validateLinks?: boolean;
   currentDateOnly?: boolean;
   searchHistory?: string[];
+  deepScrape?: boolean; // New option to enable deep scraping of internal pages
 }
 
 export interface NewsFeedResponse {
