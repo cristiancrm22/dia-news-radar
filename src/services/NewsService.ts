@@ -1,4 +1,5 @@
-import { NewsItem, NewsSource, Topic, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
+
+import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 import PythonNewsAdapter, { fetchNewsFromPythonScript } from './PythonNewsAdapter';
 
 // Configuration
@@ -17,21 +18,6 @@ const defaultSources: NewsSource[] = [
   { id: "8", name: "Página 12", url: "https://www.pagina12.com.ar", enabled: true },
   { id: "9", name: "Ámbito", url: "https://www.ambito.com", enabled: true },
   { id: "10", name: "Perfil", url: "https://www.perfil.com", enabled: true }
-];
-
-// Default topics
-const defaultTopics: Topic[] = [
-  { id: "1", name: "Política", enabled: true },
-  { id: "2", name: "Economía", enabled: true },
-  { id: "3", name: "Tecnología", enabled: true },
-  { id: "4", name: "Deportes", enabled: false },
-  { id: "5", name: "Ciencia", enabled: true },
-  { id: "6", name: "Inteligencia Artificial", enabled: true },
-  { id: "7", name: "Medio Ambiente", enabled: true },
-  { id: "8", name: "Internacional", enabled: true },
-  { id: "9", name: "Gobierno Provincial", enabled: true },
-  { id: "10", name: "Legislativo", enabled: true },
-  { id: "11", name: "Educación", enabled: true }
 ];
 
 // Default WhatsApp config
@@ -56,7 +42,10 @@ const defaultEmailConfig: EmailConfig = {
 const defaultSearchSettings: SearchSettings = {
   maxResults: 50,
   includeTwitter: true,
-  keywords: ["Magario", "Kicillof", "Espinosa"]
+  keywords: ["Magario", "Kicillof", "Espinosa"],
+  validateLinks: true,
+  currentDateOnly: true,
+  searchHistory: []
 };
 
 // Mock news data for when not using the Python scraper
@@ -185,7 +174,6 @@ const mockNews: NewsItem[] = [
 
 // LocalStorage keys
 const SOURCES_KEY = 'news_radar_sources';
-const TOPICS_KEY = 'news_radar_topics';
 const WHATSAPP_CONFIG_KEY = 'news_radar_whatsapp_config';
 const EMAIL_CONFIG_KEY = 'news_radar_email_config';
 const SEARCH_SETTINGS_KEY = 'news_radar_search_settings';
@@ -296,6 +284,9 @@ class NewsService {
       // Add query if it exists
       if (query && query.trim() !== "") {
         keywords.push(query.trim());
+        
+        // Add query to search history
+        this.addToSearchHistory(query.trim());
       }
       
       // Add additional keywords if they exist
@@ -323,8 +314,8 @@ class NewsService {
           sources: sources,
           includeTwitter: this.getSearchSettings().includeTwitter,
           maxResults: this.getSearchSettings().maxResults,
-          validateLinks: true, // Add validation of links
-          currentDateOnly: true // Only fetch news from today
+          validateLinks: this.getSearchSettings().validateLinks,
+          currentDateOnly: this.getSearchSettings().currentDateOnly
         });
       }
 
@@ -367,6 +358,29 @@ class NewsService {
     } catch (error) {
       console.error("Error searching news:", error);
       return [];
+    }
+  }
+  
+  /**
+   * Add a search term to the search history
+   */
+  static addToSearchHistory(term: string): void {
+    try {
+      const settings = this.getSearchSettings();
+      const history = settings.searchHistory || [];
+      
+      // Only add if it doesn't already exist
+      if (!history.includes(term)) {
+        // Add to beginning of array (most recent first)
+        const newHistory = [term, ...history.slice(0, 19)]; // Keep last 20 items
+        
+        this.updateSearchSettings({
+          ...settings,
+          searchHistory: newHistory
+        });
+      }
+    } catch (error) {
+      console.error("Error adding to search history:", error);
     }
   }
 

@@ -7,8 +7,8 @@ export interface NewsItem {
   sourceUrl: string;
   sourceName: string;
   imageUrl?: string;
-  topics: string[];
-  linkValid?: boolean; // Indica si el enlace ha sido validado
+  topics?: string[];
+  linkValid?: boolean;
 }
 
 export interface NewsSource {
@@ -17,12 +17,6 @@ export interface NewsSource {
   url: string;
   enabled: boolean;
   logo?: string;
-}
-
-export interface Topic {
-  id: string;
-  name: string;
-  enabled: boolean;
 }
 
 export interface WhatsAppConfig {
@@ -46,8 +40,9 @@ export interface SearchSettings {
   maxResults: number;
   includeTwitter: boolean;
   keywords: string[];
-  validateLinks?: boolean; // Validar que los enlaces sean válidos
-  currentDateOnly?: boolean; // Solo noticias del día actual
+  validateLinks?: boolean;
+  currentDateOnly?: boolean;
+  searchHistory?: string[];
 }
 
 export interface NewsFeedResponse {
@@ -61,7 +56,7 @@ export interface PythonScriptNews {
   fecha: string;
   url: string;
   resumen: string;
-  linkValido?: boolean; // Indicar si el enlace es válido
+  linkValido?: boolean;
 }
 
 export interface PythonScriptResponse {

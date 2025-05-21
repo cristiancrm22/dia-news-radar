@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +7,6 @@ import { Search, RefreshCw, Mail, Filter, X, Plus } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
-import TopicsConfig from "@/components/TopicsConfig";
 import WhatsAppConfig from "@/components/WhatsAppConfig";
 import EmailConfig from "@/components/EmailConfig";
 import NewsService from "@/services/NewsService";
@@ -24,6 +24,7 @@ const Index = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [newKeyword, setNewKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState("noticias");
@@ -44,6 +45,10 @@ const Index = () => {
     // Load search settings
     const settings = NewsService.getSearchSettings();
     setKeywords(settings.keywords || []);
+    setSearchHistory(settings.searchHistory || []);
+    setIncludeTwitter(settings.includeTwitter);
+    setTodayOnly(settings.currentDateOnly || true);
+    setValidateLinks(settings.validateLinks || true);
   }, []);
 
   const fetchNews = async () => {
@@ -58,7 +63,9 @@ const Index = () => {
       NewsService.updateSearchSettings({
         ...currentSettings,
         includeTwitter: includeTwitter,
-        keywords: keywords
+        keywords: keywords,
+        currentDateOnly: todayOnly,
+        validateLinks: validateLinks
       });
       
       const fetchedNews = await NewsService.getNews();
@@ -97,15 +104,23 @@ const Index = () => {
     try {
       console.log(`Buscando noticias con términos: "${searchQuery}" y palabras clave: ${keywords.join(', ')} y fuente: "${selectedSource}"`);
       
-      // Update search settings for twitter inclusion and save keywords
+      // Update search settings
       const currentSettings = NewsService.getSearchSettings();
       NewsService.updateSearchSettings({
         ...currentSettings,
         includeTwitter: includeTwitter,
-        keywords: keywords
+        keywords: keywords,
+        currentDateOnly: todayOnly,
+        validateLinks: validateLinks
       });
       
       const filteredNews = await NewsService.searchNews(searchQuery, selectedSource, keywords);
+      
+      // Update search history after search
+      if (searchQuery.trim()) {
+        const updatedSettings = NewsService.getSearchSettings();
+        setSearchHistory(updatedSettings.searchHistory || []);
+      }
       
       // Asegurarnos de que siempre tenemos un array
       setNews(Array.isArray(filteredNews) ? filteredNews : []);
@@ -169,6 +184,11 @@ const Index = () => {
       keywords: updatedKeywords
     });
   };
+  
+  const useHistoryTerm = (term: string) => {
+    setSearchQuery(term);
+    fetchSearchResults();
+  };
 
   // Aseguramos que news siempre es un array para evitar errores
   const safeNews = Array.isArray(news) ? news : [];
@@ -185,10 +205,9 @@ const Index = () => {
       </header>
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-        <TabsList className="grid grid-cols-5 mb-8">
+        <TabsList className="grid grid-cols-4 mb-8">
           <TabsTrigger value="noticias">Noticias</TabsTrigger>
           <TabsTrigger value="fuentes">Fuentes</TabsTrigger>
-          <TabsTrigger value="temas">Temas</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
         </TabsList>
@@ -211,7 +230,7 @@ const Index = () => {
                       onClick={() => setSearchQuery("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
-                      ✕
+                      <X className="h-4 w-4" />
                     </button>
                   )}
                 </div>
@@ -329,6 +348,24 @@ const Index = () => {
                   </Button>
                 </div>
               </div>
+              
+              {searchHistory.length > 0 && (
+                <div className="mt-4">
+                  <Label className="mb-2 block">Historial de búsquedas</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {searchHistory.map((term, index) => (
+                      <Badge 
+                        key={index} 
+                        variant="outline" 
+                        className="cursor-pointer hover:bg-secondary"
+                        onClick={() => useHistoryTerm(term)}
+                      >
+                        {term}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </form>
 
             {loading ? (
@@ -366,10 +403,6 @@ const Index = () => {
 
         <TabsContent value="fuentes">
           <SourcesConfig />
-        </TabsContent>
-
-        <TabsContent value="temas">
-          <TopicsConfig />
         </TabsContent>
 
         <TabsContent value="whatsapp">
