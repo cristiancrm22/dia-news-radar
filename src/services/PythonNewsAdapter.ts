@@ -1,3 +1,4 @@
+
 /**
  * Service to communicate with the Python news scraper
  */
@@ -93,6 +94,13 @@ const mockPythonResponse: PythonNewsResponse = {
       url: "https://www.latecla.info/politica/milei-critico-duramente-gobernadores-provinciales",
       resumen: "En una conferencia de prensa, el presidente Milei criticó la gestión de varios gobernadores provinciales y los acusó de no querer reducir gastos innecesarios.",
       linkValido: true
+    },
+    {
+      titulo: "Kicillof visitó 25 de Mayo y apuntó contra el intendente que ahora es libertario",
+      fecha: new Date().toISOString(),
+      url: "https://www.latecla.info/158962-kicillof-visito-25-de-mayo-y-apunto-contra-el-intendente-que-ahora-es-libertario",
+      resumen: "El gobernador Axel Kicillof realizó una visita a la localidad de 25 de Mayo donde criticó al intendente que recientemente se unió al partido libertario.",
+      linkValido: true
     }
   ]
 };
@@ -132,9 +140,12 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
         });
       }
       
-      // Filter news by keywords if provided
+      // Filter news by keywords if provided - improved matching
       if (options.keywords?.length) {
+        // Convert all keywords to lowercase for case-insensitive matching
         const keywords = options.keywords.map(k => k.toLowerCase());
+        console.log("Filtering by keywords:", keywords);
+        
         mockData.data = mockData.data?.filter(item => 
           keywords.some(keyword => 
             (item.titulo?.toLowerCase().includes(keyword) || 
@@ -157,6 +168,7 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
         mockData.data = mockData.data?.filter(item => item.linkValido !== false);
       }
       
+      console.log("Found news items after filtering:", mockData.data?.length || 0);
       return transformPythonResponseToNewsItems(mockData);
     }
 
