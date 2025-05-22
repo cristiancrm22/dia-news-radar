@@ -1,23 +1,35 @@
 
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
-import PythonNewsAdapter, { fetchNewsFromPythonScript } from './PythonNewsAdapter';
+import PythonNewsAdapter, { fetchNewsFromPythonScript, downloadNewsCSV } from './PythonNewsAdapter';
 
 // Configuration
 const USE_MOCK_DATA = true; // Change to false in production
 const USE_PYTHON_SCRAPER = true; // Set to true to use the Python script
 
-// Default sources
+// Default sources (matching the Python script's NEWS_SOURCES)
 const defaultSources: NewsSource[] = [
-  { id: "1", name: "El País", url: "https://elpais.com", enabled: true },
-  { id: "2", name: "BBC News", url: "https://www.bbc.com", enabled: true },
-  { id: "3", name: "CNN", url: "https://www.cnn.com", enabled: true },
-  { id: "4", name: "Twitter", url: "https://twitter.com", enabled: false },
-  { id: "5", name: "La Nación", url: "https://www.lanacion.com.ar", enabled: true },
-  { id: "6", name: "Clarín", url: "https://www.clarin.com.ar", enabled: true },
-  { id: "7", name: "Infobae", url: "https://www.infobae.com", enabled: true },
-  { id: "8", name: "Página 12", url: "https://www.pagina12.com.ar", enabled: true },
-  { id: "9", name: "Ámbito", url: "https://www.ambito.com", enabled: true },
-  { id: "10", name: "Perfil", url: "https://www.perfil.com", enabled: true }
+  { id: "1", name: "Clarín", url: "https://www.clarin.com", enabled: true },
+  { id: "2", name: "La Nación", url: "https://www.lanacion.com.ar", enabled: true },
+  { id: "3", name: "Página 12", url: "https://www.pagina12.com.ar", enabled: true },
+  { id: "4", name: "Infobae", url: "https://www.infobae.com", enabled: true },
+  { id: "5", name: "Ámbito", url: "https://www.ambito.com", enabled: true },
+  { id: "6", name: "El Cronista", url: "https://www.cronista.com", enabled: true },
+  { id: "7", name: "Perfil", url: "https://www.perfil.com", enabled: true },
+  { id: "8", name: "El Día", url: "https://www.eldia.com", enabled: true },
+  { id: "9", name: "Hoy", url: "https://diariohoy.net", enabled: true },
+  { id: "10", name: "La Tecla", url: "https://www.latecla.info", enabled: true },
+  { id: "11", name: "Infocielo", url: "https://infocielo.com", enabled: true },
+  { id: "12", name: "La Nueva", url: "https://www.lanueva.com", enabled: true },
+  { id: "13", name: "Bahía Noticias", url: "https://www.bahianoticias.com", enabled: true },
+  { id: "14", name: "Diputados BA", url: "https://diputadosbsas.com.ar", enabled: true }
+];
+
+// Default Twitter users (matching the Python script's TWITTER_USERS)
+const defaultTwitterUsers: string[] = [
+  "Senado_BA",
+  "VeronicaMagario",
+  "BAProvincia",
+  "DiputadosBA"
 ];
 
 // Default WhatsApp config
@@ -46,7 +58,8 @@ const defaultSearchSettings: SearchSettings = {
   validateLinks: true,
   currentDateOnly: true,
   searchHistory: [],
-  deepScrape: true  // Enable deep scraping by default
+  deepScrape: true,  // Enable deep scraping by default
+  twitterUsers: defaultTwitterUsers
 };
 
 // Mock news data for when not using the Python scraper
@@ -178,6 +191,7 @@ const SOURCES_KEY = 'news_radar_sources';
 const WHATSAPP_CONFIG_KEY = 'news_radar_whatsapp_config';
 const EMAIL_CONFIG_KEY = 'news_radar_email_config';
 const SEARCH_SETTINGS_KEY = 'news_radar_search_settings';
+const TWITTER_USERS_KEY = 'news_radar_twitter_users';
 
 // Utility functions for text processing
 const textUtils = {
@@ -255,7 +269,8 @@ class NewsService {
           maxResults: settings.maxResults,
           validateLinks: settings.validateLinks,
           currentDateOnly: settings.currentDateOnly,
-          deepScrape: settings.deepScrape
+          deepScrape: settings.deepScrape,
+          twitterUsers: settings.twitterUsers
         });
       }
       
@@ -327,7 +342,8 @@ class NewsService {
           maxResults: settings.maxResults,
           validateLinks: settings.validateLinks,
           currentDateOnly: settings.currentDateOnly,
-          deepScrape: settings.deepScrape // Pass deep scrape option
+          deepScrape: settings.deepScrape,
+          twitterUsers: settings.twitterUsers
         });
       }
 
@@ -374,6 +390,17 @@ class NewsService {
   }
   
   /**
+   * Export current news results as CSV and trigger download
+   */
+  static downloadNewsAsCSV(news: NewsItem[]): void {
+    try {
+      downloadNewsCSV(news, "resultados.csv");
+    } catch (error) {
+      console.error("Error downloading CSV:", error);
+    }
+  }
+  
+  /**
    * Add a search term to the search history
    */
   static addToSearchHistory(term: string): void {
@@ -410,6 +437,29 @@ class NewsService {
   // Update sources in localStorage
   static updateSources(sources: NewsSource[]): void {
     localStorage.setItem(SOURCES_KEY, JSON.stringify(sources));
+  }
+
+  // Get Twitter users from localStorage or defaults
+  static getTwitterUsers(): string[] {
+    try {
+      const savedUsers = localStorage.getItem(TWITTER_USERS_KEY);
+      return savedUsers ? JSON.parse(savedUsers) : defaultTwitterUsers;
+    } catch (error) {
+      console.error("Error loading Twitter users:", error);
+      return defaultTwitterUsers;
+    }
+  }
+
+  // Update Twitter users in localStorage
+  static updateTwitterUsers(users: string[]): void {
+    localStorage.setItem(TWITTER_USERS_KEY, JSON.stringify(users));
+    
+    // Also update in search settings
+    const currentSettings = this.getSearchSettings();
+    this.updateSearchSettings({
+      ...currentSettings,
+      twitterUsers: users
+    });
   }
 
   // Get WhatsApp config from localStorage or defaults
@@ -456,7 +506,14 @@ class NewsService {
   static getSearchSettings(): SearchSettings {
     try {
       const savedSettings = localStorage.getItem(SEARCH_SETTINGS_KEY);
-      return savedSettings ? JSON.parse(savedSettings) : defaultSearchSettings;
+      const settings = savedSettings ? JSON.parse(savedSettings) : defaultSearchSettings;
+      
+      // Ensure twitterUsers is included (for backwards compatibility)
+      if (!settings.twitterUsers) {
+        settings.twitterUsers = defaultTwitterUsers;
+      }
+      
+      return settings;
     } catch (error) {
       console.error("Error loading search settings:", error);
       return defaultSearchSettings;

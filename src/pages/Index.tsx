@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Clock } from "lucide-react";
+import { RefreshCw, Clock, Download } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
 import NewsCard from "@/components/NewsCard";
@@ -111,6 +111,23 @@ const Index = () => {
       }, 500);
     }
   };
+  
+  // Function to download results as CSV
+  const downloadResults = () => {
+    if (news && news.length > 0) {
+      NewsService.downloadNewsAsCSV(news);
+      toast({
+        title: "Descarga iniciada",
+        description: "Se está descargando el archivo resultados.csv"
+      });
+    } else {
+      toast({
+        title: "Sin resultados",
+        description: "No hay noticias para descargar",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Aseguramos que news siempre es un array para evitar errores
   const safeNews = Array.isArray(news) ? news : [];
@@ -157,21 +174,33 @@ const Index = () => {
                     <span>Última actualización: {formatLastSearchTime()}</span>
                   </div>
                 </div>
-                <Button 
-                  variant="default" 
-                  className="flex gap-2"
-                  onClick={fetchNews}
-                  disabled={loading}
-                >
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                  Actualizar
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="default" 
+                    className="flex gap-2"
+                    onClick={fetchNews}
+                    disabled={loading}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    Actualizar
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="flex gap-2"
+                    onClick={downloadResults}
+                    disabled={loading || safeNews.length === 0}
+                  >
+                    <Download className="h-4 w-4" />
+                    Descargar CSV
+                  </Button>
+                </div>
               </div>
               
               {/* Progress bar that shows during search */}
               {loading && searchProgress > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm text-gray-500 mb-1">Buscando noticias en todos los portales...</p>
+                  <p className="text-sm text-gray-500 mb-1">Buscando noticias en todos los portales configurados...</p>
                   <Progress value={searchProgress} className="h-2" />
                 </div>
               )}

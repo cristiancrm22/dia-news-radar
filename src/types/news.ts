@@ -1,3 +1,4 @@
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -42,7 +43,8 @@ export interface SearchSettings {
   validateLinks?: boolean;
   currentDateOnly?: boolean;
   searchHistory?: string[];
-  deepScrape?: boolean; // New option to enable deep scraping of internal pages
+  deepScrape?: boolean; // Enable deep scraping of internal pages
+  twitterUsers?: string[]; // Add Twitter users to monitor
 }
 
 export interface NewsFeedResponse {

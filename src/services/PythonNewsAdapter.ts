@@ -38,6 +38,7 @@ export interface NewsSearchOptions {
   validateLinks?: boolean;
   currentDateOnly?: boolean;
   deepScrape?: boolean;
+  twitterUsers?: string[];
 }
 
 /**
@@ -101,6 +102,20 @@ const mockPythonResponse: PythonNewsResponse = {
       url: "https://www.latecla.info/158962-kicillof-visito-25-de-mayo-y-apunto-contra-el-intendente-que-ahora-es-libertario",
       resumen: "El gobernador Axel Kicillof realizó una visita a la localidad de 25 de Mayo donde criticó al intendente que recientemente se unió al partido libertario.",
       linkValido: true
+    },
+    {
+      titulo: "Senado_BA: Se aprobó en comisión el proyecto de Kicillof",
+      fecha: new Date().toISOString(),
+      url: "https://twitter.com/Senado_BA/status/1795123456789",
+      resumen: "La comisión de Presupuesto del Senado Bonaerense aprobó por mayoría el proyecto del gobernador Kicillof para redistribuir fondos a municipios afectados por recortes nacionales.",
+      linkValido: true
+    },
+    {
+      titulo: "Tweet de @VeronicaMagario sobre nuevos proyectos provinciales",
+      fecha: new Date().toISOString(),
+      url: "https://twitter.com/VeronicaMagario/status/1795234567890",
+      resumen: "Seguimos trabajando por una provincia más justa. Hoy presentamos nuevos proyectos para mejorar la calidad de vida de los bonaerenses.",
+      linkValido: true
     }
   ]
 };
@@ -154,6 +169,11 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
         );
       }
       
+      // Filter Twitter results unless includeTwitter is true
+      if (options.includeTwitter === false) {
+        mockData.data = mockData.data?.filter(item => !item.url.includes('twitter.com'));
+      }
+      
       // Filter by date if currentDateOnly is true
       if (options.currentDateOnly) {
         const today = new Date().toISOString().split('T')[0];
@@ -172,26 +192,45 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
       return transformPythonResponseToNewsItems(mockData);
     }
 
-    // Prepare the request parameters
+    // Prepare the request parameters based on the Python script provided
     const params = new URLSearchParams();
+    
+    // Pass keywords (KEYWORDS in Python script)
     if (options.keywords?.length) {
       params.append('keywords', options.keywords.join(','));
     }
+    
+    // Pass news sources (NEWS_SOURCES in Python script)
     if (options.sources?.length) {
       params.append('sources', options.sources.join(','));
     }
+    
+    // Pass Twitter users (TWITTER_USERS in Python script)
+    if (options.twitterUsers?.length) {
+      params.append('twitter_users', options.twitterUsers.join(','));
+    }
+    
+    // Include Twitter option
     if (options.includeTwitter !== undefined) {
       params.append('include_twitter', options.includeTwitter.toString());
     }
+    
+    // Max results
     if (options.maxResults) {
       params.append('max_results', options.maxResults.toString());
     }
+    
+    // Validate links
     if (options.validateLinks !== undefined) {
       params.append('validate_links', options.validateLinks.toString());
     }
+    
+    // Current date only
     if (options.currentDateOnly !== undefined) {
       params.append('current_date_only', options.currentDateOnly.toString());
     }
+    
+    // Deep scrape (more thorough scraping)
     if (options.deepScrape !== undefined) {
       params.append('deep_scrape', options.deepScrape.toString());
     }
@@ -269,6 +308,58 @@ function transformPythonResponseToNewsItems(response: PythonNewsResponse): NewsI
 }
 
 /**
+ * Export CSV with current news results
+ */
+export function exportNewsToCSV(news: NewsItem[]): string {
+  // Create CSV header
+  const header = ["titulo", "fecha", "url", "resumen"].join(",") + "\n";
+  
+  // Create CSV content
+  const rows = news.map(item => {
+    // Format each field properly for CSV (handle commas, quotes, etc.)
+    const formattedTitle = `"${item.title.replace(/"/g, '""')}"`;
+    const formattedDate = `"${item.date}"`;
+    const formattedUrl = `"${item.sourceUrl}"`;
+    const formattedSummary = `"${item.summary.replace(/"/g, '""')}"`;
+    
+    return [formattedTitle, formattedDate, formattedUrl, formattedSummary].join(",");
+  });
+  
+  // Combine header and rows
+  const csvContent = header + rows.join("\n");
+  
+  return csvContent;
+}
+
+/**
+ * Download CSV file with news results
+ */
+export function downloadNewsCSV(news: NewsItem[], filename = "resultados.csv"): void {
+  const csvContent = exportNewsToCSV(news);
+  
+  // Create a Blob with the CSV content
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  
+  // Create download link
+  const link = document.createElement("a");
+  
+  // Create a URL for the blob
+  const url = URL.createObjectURL(blob);
+  
+  // Set link attributes
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  
+  // Add to document, click to download, then remove
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  // Clean up the URL object
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Validate if a URL is valid and working
  * This is a client-side validation, actual validation should be done server-side
  */
@@ -335,5 +426,7 @@ function inferTopicsFromText(text: string): string[] {
 
 export default {
   fetchNewsFromPythonScript,
-  validateUrl
+  validateUrl,
+  exportNewsToCSV,
+  downloadNewsCSV
 };
