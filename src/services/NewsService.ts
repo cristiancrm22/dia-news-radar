@@ -64,132 +64,10 @@ const defaultSearchSettings: SearchSettings = {
   currentDateOnly: true,
   searchHistory: [],
   deepScrape: true,  // Enable deep scraping by default
-  twitterUsers: defaultTwitterUsers
+  twitterUsers: defaultTwitterUsers,
+  pythonScriptPath: "python3",
+  pythonExecutable: "/usr/bin/python3"
 };
-
-// Mock news data for when not using the Python scraper
-const mockNews: NewsItem[] = [
-  {
-    id: "1",
-    title: "Nueva política económica anunciada por el gobierno",
-    summary: "El gobierno ha anunciado una nueva política económica que busca estimular el crecimiento en sectores clave y reducir la inflación en los próximos meses.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://elpais.com/economia/2023-05-15/nueva-politica-economica.html",
-    sourceName: "El País",
-    topics: ["Economía", "Política"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "2",
-    title: "Avances en inteligencia artificial revolucionan la industria tecnológica",
-    summary: "Los últimos avances en inteligencia artificial están transformando rápidamente la industria tecnológica, con nuevas aplicaciones que prometen cambiar la forma en que interactuamos con la tecnología.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.technologyreview.com/ai-advances",
-    sourceName: "MIT Technology Review",
-    topics: ["Tecnología", "Inteligencia Artificial"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "3",
-    title: "Resultados de las elecciones regionales sorprenden a los analistas",
-    summary: "Los resultados de las recientes elecciones regionales han sorprendido a muchos analistas políticos, con cambios significativos en el mapa electoral y nuevas fuerzas emergentes.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.bbc.com/news/elections",
-    sourceName: "BBC News",
-    topics: ["Política", "Elecciones"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "4",
-    title: "Nuevo estudio sobre cambio climático advierte sobre consecuencias graves",
-    summary: "Un nuevo estudio científico sobre el cambio climático advierte sobre consecuencias más graves de lo previsto si no se toman medidas urgentes para reducir las emisiones de carbono.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.nationalgeographic.com/environment/climate-change",
-    sourceName: "National Geographic",
-    topics: ["Medio Ambiente", "Ciencia"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "5",
-    title: "Descubrimiento arqueológico revela antigua civilización desconocida",
-    summary: "Un equipo de arqueólogos ha descubierto restos de una antigua civilización previamente desconocida, lo que podría cambiar nuestra comprensión de la historia humana en la región.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.archaeology.org/discoveries",
-    sourceName: "Archaeology Magazine",
-    topics: ["Historia", "Arqueología"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "6",
-    title: "Innovaciones en energía renovable prometen soluciones sostenibles",
-    summary: "Nuevas innovaciones en el campo de la energía renovable están ofreciendo soluciones más eficientes y sostenibles para la creciente demanda energética mundial.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.renewableenergyworld.com/innovations",
-    sourceName: "Renewable Energy World",
-    topics: ["Energía", "Medio Ambiente", "Tecnología"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "7",
-    title: "Kicillof anuncia nuevo plan económico para la provincia",
-    summary: "El gobernador Axel Kicillof presentó un ambicioso plan económico que busca revitalizar la economía provincial y generar nuevos empleos en sectores estratégicos.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.lanacion.com.ar/economia/kicillof-plan-economico-provincia-buenos-aires",
-    sourceName: "La Nación",
-    topics: ["Economía", "Política", "Provincia"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "8",
-    title: "Debate político genera tensión entre el gobierno nacional y Kicillof",
-    summary: "El intercambio de declaraciones entre funcionarios del gobierno nacional y el gobernador Kicillof escaló la tensión política en medio de negociaciones por fondos para la provincia.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.clarin.com/politica/tension-gobierno-kicillof-fondos",
-    sourceName: "Clarín",
-    topics: ["Política", "Gobierno"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "9",
-    title: "KICILLOF participa en foro internacional sobre políticas públicas",
-    summary: "El gobernador KICILLOF presentó las políticas de su administración en un foro internacional, generando interés entre diversos líderes regionales.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.pagina12.com.ar/politica/kicillof-foro-internacional-politicas",
-    sourceName: "Página 12",
-    topics: ["Política", "Internacional"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "10",
-    title: "Milei critica duramente las políticas económicas provinciales",
-    summary: "El presidente Javier Milei criticó duramente las políticas económicas de varias provincias, señalando problemas estructurales y deficiencias en la gestión.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.clarin.com.ar/economia/milei-criticas-provincias",
-    sourceName: "Clarín",
-    topics: ["Economía", "Política"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "11",
-    title: "Fernández y su legado en la política argentina",
-    summary: "Un análisis profundo sobre el impacto del ex-presidente Alberto Fernández en la política argentina y las consecuencias de sus decisiones en la economía actual.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.lanacion.com.ar/politica/alberto-fernandez-legado-politica-argentina",
-    sourceName: "La Nación",
-    topics: ["Política", "Historia"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  },
-  {
-    id: "12",
-    title: "Avances en la implementación de inteligencia artificial en Argentina",
-    summary: "Empresas argentinas están adoptando rápidamente tecnologías de IA para mejorar sus operaciones y servicios, posicionando al país como líder regional en innovación.",
-    date: new Date().toISOString(),
-    sourceUrl: "https://www.infobae.com/tecno/inteligencia-artificial-argentina-avances",
-    sourceName: "Infobae",
-    topics: ["Tecnología", "Inteligencia Artificial", "Economía"],
-    imageUrl: "https://via.placeholder.com/300x200"
-  }
-];
 
 // LocalStorage keys
 const SOURCES_KEY = 'news_radar_sources';
@@ -197,60 +75,6 @@ const WHATSAPP_CONFIG_KEY = 'news_radar_whatsapp_config';
 const EMAIL_CONFIG_KEY = 'news_radar_email_config';
 const SEARCH_SETTINGS_KEY = 'news_radar_search_settings';
 const TWITTER_USERS_KEY = 'news_radar_twitter_users';
-
-// Utility functions for text processing
-const textUtils = {
-  // Normaliza texto: convierte a minúsculas y quita acentos
-  normalizeText(text: string): string {
-    if (!text) return '';
-    return text.toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim();
-  },
-  
-  // Comprueba si un texto contiene una consulta
-  textContainsQuery(text: string, searchQuery: string): boolean {
-    if (!text || !searchQuery) return false;
-    return this.normalizeText(text).includes(this.normalizeText(searchQuery));
-  },
-  
-  // Comprueba si un texto contiene alguna de las palabras en un array
-  textContainsAnyWord(text: string, words: string[]): boolean {
-    if (!text || !words || words.length === 0) return false;
-    const normalizedText = this.normalizeText(text);
-    return words.some(word => normalizedText.includes(this.normalizeText(word)));
-  },
-  
-  // Puntúa la relevancia de una noticia para una consulta (más puntos = más relevante)
-  scoreNewsRelevance(news: NewsItem, query: string): number {
-    if (!news || !query) return 0;
-    
-    let score = 0;
-    const normalizedQuery = this.normalizeText(query);
-    
-    // Título tiene más peso
-    if (this.textContainsQuery(news.title, normalizedQuery)) score += 10;
-    
-    // Resumen
-    if (this.textContainsQuery(news.summary, normalizedQuery)) score += 5;
-    
-    // Fuente
-    if (this.textContainsQuery(news.sourceName, normalizedQuery)) score += 3;
-    
-    // Temas
-    if (news.topics && Array.isArray(news.topics)) {
-      if (news.topics.some(topic => this.textContainsQuery(topic, normalizedQuery))) {
-        score += 4;
-      }
-    }
-    
-    // Coincidencia exacta tiene bonus
-    if (this.normalizeText(news.title).includes(` ${normalizedQuery} `)) score += 5;
-    
-    return score;
-  }
-};
 
 class NewsService {
   /**
@@ -306,12 +130,16 @@ class NewsService {
         return this.getNewsFromRealSources(settings.keywords);
       }
       
-      // Use mock data with delay
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const validNews = Array.isArray(mockNews) ? mockNews : [];
-          resolve(validNews);
-        }, 500);
+      // Use simulated Python script results
+      return fetchNewsFromPythonScript({
+        keywords: settings.keywords,
+        sources: sourceUrls,
+        includeTwitter: settings.includeTwitter,
+        maxResults: settings.maxResults,
+        validateLinks: settings.validateLinks,
+        currentDateOnly: settings.currentDateOnly,
+        deepScrape: settings.deepScrape,
+        twitterUsers: settings.twitterUsers
       });
     } catch (error) {
       console.error("Error fetching news:", error);
@@ -386,37 +214,13 @@ class NewsService {
         return this.getNewsFromRealSources(keywords);
       }
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      console.log(`Buscando noticias con términos: "${keywords.join(', ')}"`);
-      
-      // Filtering mock news data
-      const allNews = Array.isArray(mockNews) ? mockNews : [];
-      
-      // Filtering and sorting logic
-      let filteredNews = allNews.filter(item => {
-        if (!item) return false;
-        
-        // Check if any keyword matches the title, summary or source name
-        return keywords.some(keyword => {
-          const normalizedKeyword = keyword.toLowerCase();
-          const titleContainsKeyword = item.title.toLowerCase().includes(normalizedKeyword);
-          const summaryContainsKeyword = item.summary.toLowerCase().includes(normalizedKeyword);
-          const sourceContainsKeyword = item.sourceName.toLowerCase().includes(normalizedKeyword);
-          
-          return titleContainsKeyword || summaryContainsKeyword || sourceContainsKeyword;
-        });
+      // Use the mock data with filtering
+      return fetchNewsFromPythonScript({
+        keywords: keywords,
+        sources: source ? [source] : undefined,
+        includeTwitter: true,
+        validateLinks: true
       });
-      
-      // If source is provided, filter by it
-      if (source && filteredNews.length > 0) {
-        filteredNews = filteredNews.filter(item => 
-          item.sourceName.toLowerCase().includes(source.toLowerCase())
-        );
-      }
-      
-      return filteredNews;
     } catch (error) {
       console.error("Error searching news:", error);
       return [];
@@ -547,6 +351,16 @@ class NewsService {
         settings.twitterUsers = defaultTwitterUsers;
       }
       
+      // Ensure Python script path is included
+      if (!settings.pythonScriptPath) {
+        settings.pythonScriptPath = defaultSearchSettings.pythonScriptPath;
+      }
+      
+      // Ensure Python executable is included
+      if (!settings.pythonExecutable) {
+        settings.pythonExecutable = defaultSearchSettings.pythonExecutable;
+      }
+      
       return settings;
     } catch (error) {
       console.error("Error loading search settings:", error);
@@ -634,14 +448,14 @@ class NewsService {
     }
   }
 
-  // Improved implementation for WhatsApp message processing using AI techniques
+  // Process WhatsApp message for retrieving news
   static async processWhatsAppMessage(message: string): Promise<NewsItem[]> {
     try {
       if (!message) return [];
       
       message = message.trim().toLowerCase();
       
-      // Palabras clave que pueden indicar qué quiere el usuario
+      // Keywords that might indicate what the user wants
       const keywordMap = {
         noticias: ['noticias', 'noticia', 'news', 'nuevas', 'recientes'],
         buscar: ['buscar', 'encontrar', 'busca', 'search', 'query', 'consulta'],
@@ -649,7 +463,7 @@ class NewsService {
         fuente: ['fuente', 'medio', 'diario', 'periódico', 'source', 'from']
       };
       
-      // Detectar intención del usuario basado en palabras clave
+      // Detect user intent based on keywords
       const detectIntent = (msg: string): 'all' | 'search' | 'unknown' => {
         if (keywordMap.noticias.some(k => msg === k)) {
           return 'all';
@@ -660,7 +474,7 @@ class NewsService {
           return 'search';
         }
         
-        // Si el mensaje tiene más de 3 caracteres, asumimos que es una búsqueda
+        // If the message has more than 3 characters, assume it's a search
         if (msg.length > 3) {
           return 'search';
         }
@@ -668,47 +482,47 @@ class NewsService {
         return 'unknown';
       };
       
-      // Detectar la intención del mensaje
+      // Detect message intent
       const intent = detectIntent(message);
       
       switch(intent) {
         case 'all':
-          // Retornar todas las noticias recientes
+          // Return all recent news
           return this.getNews();
           
         case 'search':
-          // Extraer consulta y fuente si existe
+          // Extract query and source if present
           let query = message;
           let source = '';
           
-          // Eliminar palabras clave del inicio para obtener la consulta pura
+          // Remove keywords from the start to get the pure query
           for (const keyword of [...keywordMap.noticias, ...keywordMap.buscar]) {
             if (query.startsWith(keyword)) {
               query = query.substring(keyword.length).trim();
-              // Eliminar caracteres especiales como ":" después de la palabra clave
+              // Remove special characters like ":" after the keyword
               query = query.replace(/^[:;,.]+\s*/, '').trim();
               break;
             }
           }
           
-          // Buscar si especifica una fuente
+          // Look for source specification
           const sourceIndicators = keywordMap.fuente.concat(keywordMap.sobre);
           for (const indicator of sourceIndicators) {
             const pattern = new RegExp(`\\s${indicator}\\s+([\\w\\s]+)(?:\\s|$)`, 'i');
             const match = query.match(pattern);
             if (match && match[1]) {
               source = match[1].trim();
-              // Eliminar la parte de la fuente de la consulta
+              // Remove the source part from the query
               query = query.replace(pattern, ' ').trim();
               break;
             }
           }
           
-          console.log(`Intención detectada: búsqueda. Query: "${query}", Fuente: "${source}"`);
+          console.log(`Detected intent: search. Query: "${query}", Source: "${source}"`);
           return this.searchNews(query, source);
           
         default:
-          console.log("Intención no reconocida, intentando buscar directamente:", message);
+          console.log("Intent not recognized, trying direct search:", message);
           return this.searchNews(message);
       }
     } catch (error) {
@@ -722,13 +536,19 @@ class NewsService {
     // This function is now replaced by the Python scraper
     if (USE_PYTHON_SCRAPER) {
       const settings = this.getSearchSettings();
+      const enabledSources = this.getSources()
+        .filter(source => source.enabled)
+        .map(source => source.url);
+        
       return fetchNewsFromPythonScript({
         keywords: keywords || [],
+        sources: enabledSources,
         includeTwitter: settings.includeTwitter,
         maxResults: settings.maxResults,
         validateLinks: settings.validateLinks,
         currentDateOnly: settings.currentDateOnly,
-        deepScrape: settings.deepScrape // Pass deep scrape option
+        deepScrape: settings.deepScrape,
+        twitterUsers: settings.twitterUsers
       });
     }
     

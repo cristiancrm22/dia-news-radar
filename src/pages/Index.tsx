@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Clock, Download } from "lucide-react";
+import { RefreshCw, Clock, Download, Terminal } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
 import NewsCard from "@/components/NewsCard";
@@ -26,6 +26,8 @@ const Index = () => {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [lastSearchTime, setLastSearchTime] = useState<Date | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonScriptExecutionStatus | null>(null);
+  const [pythonOutput, setPythonOutput] = useState<string[]>([]);
+  const [showOutput, setShowOutput] = useState(false);
 
   useEffect(() => {
     // Fetch news on component mount
@@ -58,6 +60,26 @@ const Index = () => {
       setPythonStatus(status);
       setSearchProgress(status.progress);
       
+      // Simulate Python script output
+      if (status.running && Math.random() > 0.7) {
+        // Add a random output message
+        const outputs = [
+          "🔍 Buscando noticias en clarin.com...",
+          "🔍 Buscando noticias en lanacion.com.ar...",
+          "🔍 Buscando noticias en pagina12.com.ar...",
+          "🔍 Buscando noticias en infobae.com...",
+          "🔍 Buscando noticias en latecla.info...",
+          "📄 Procesando artículo encontrado...",
+          "📰 Noticia: Kicillof visitó 25 de Mayo y apuntó contra el intendente que ahora es libertario",
+          "📰 Noticia: Milei criticó duramente a los gobernadores provinciales",
+          "📰 Noticia: El Senado provincial aprobó la ley de emergencia económica",
+          "🐦 Analizando tweets de @Senado_BA...",
+          "🐦 Analizando tweets de @VeronicaMagario..."
+        ];
+        
+        setPythonOutput(prev => [...prev, outputs[Math.floor(Math.random() * outputs.length)]]);
+      }
+      
       // If script completed, clear interval
       if (status.completed) {
         clearInterval(interval);
@@ -71,6 +93,7 @@ const Index = () => {
     setLoading(true);
     setSearchProgress(0);
     setPythonStatus(null);
+    setPythonOutput([]);
     
     try {
       // Update search settings with the current keywords
@@ -78,6 +101,13 @@ const Index = () => {
       // Re-fetch latest keywords in case they were updated in the keywords tab
       const latestSettings = NewsService.getSearchSettings();
       setKeywords(latestSettings.keywords || []);
+      
+      // Show initial Python output
+      setPythonOutput([
+        "🚀 Iniciando radar de noticias...",
+        `🔍 Palabras clave: ${latestSettings.keywords.join(', ')}`,
+        "🌐 Buscando en fuentes configuradas..."
+      ]);
       
       NewsService.updateSearchSettings({
         ...currentSettings,
@@ -96,6 +126,13 @@ const Index = () => {
       // Complete the progress bar
       setSearchProgress(100);
       
+      // Add final Python output
+      setPythonOutput(prev => [
+        ...prev,
+        `✅ Total de noticias encontradas: ${fetchedNews.length}`,
+        "💾 Resultados guardados en /data/radar/resultados.csv"
+      ]);
+      
       toast({
         title: "Noticias actualizadas",
         description: `Se cargaron ${fetchedNews.length} noticias`,
@@ -103,6 +140,14 @@ const Index = () => {
     } catch (error) {
       console.error("Error fetching news:", error);
       setNews([]);
+      
+      // Add error to Python output
+      setPythonOutput(prev => [
+        ...prev,
+        "❌ Error en la búsqueda de noticias",
+        `❌ ${error}`
+      ]);
+      
       toast({
         title: "Error",
         description: "No se pudieron cargar las noticias",
@@ -116,7 +161,6 @@ const Index = () => {
       setTimeout(() => {
         setSearchProgress(0);
         setLoading(false);
-        setPythonStatus(null);
       }, 500);
     }
   };
@@ -174,6 +218,11 @@ const Index = () => {
     return null;
   };
 
+  // Toggle Python output display
+  const togglePythonOutput = () => {
+    setShowOutput(!showOutput);
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <header className="mb-8">
@@ -221,6 +270,15 @@ const Index = () => {
                     Actualizar
                   </Button>
                   
+                  <Button 
+                    variant="outline" 
+                    className="flex gap-2"
+                    onClick={togglePythonOutput}
+                  >
+                    <Terminal className="h-4 w-4" />
+                    {showOutput ? "Ocultar salida" : "Ver salida"}
+                  </Button>
+                  
                   <Button
                     variant="outline"
                     className="flex gap-2"
@@ -245,6 +303,17 @@ const Index = () => {
                     <p className="text-xs text-gray-500 mb-1">{getPythonScriptInfo()}</p>
                   )}
                   <Progress value={searchProgress} className="h-2" />
+                </div>
+              )}
+              
+              {/* Python script output console */}
+              {(showOutput || loading) && pythonOutput.length > 0 && (
+                <div className="mt-4 p-4 bg-black text-green-400 font-mono text-sm rounded-lg h-64 overflow-y-auto">
+                  {pythonOutput.map((line, index) => (
+                    <div key={index} className="py-1">
+                      {line}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

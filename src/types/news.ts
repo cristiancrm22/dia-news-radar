@@ -54,7 +54,7 @@ export interface NewsFeedResponse {
   articles: NewsItem[];
 }
 
-// Python script response structure
+// Python script response structure - updated to match the exact format from the script
 export interface PythonScriptNews {
   titulo: string;
   fecha: string;
@@ -79,4 +79,15 @@ export interface PythonScriptExecutionStatus {
   csvPath?: string;
   startTime?: Date;
   endTime?: Date;
+}
+
+// Python script execution parameters
+export interface PythonScriptParams {
+  keywords: string[];
+  sources: string[];
+  twitterUsers: string[];
+  outputPath?: string;
+  maxWorkers?: number;
+  validateLinks?: boolean;
+  currentDateOnly?: boolean;
 }

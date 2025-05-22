@@ -2,7 +2,7 @@
 /**
  * Service to communicate with the Python news scraper
  */
-import { NewsItem, PythonScriptNews, PythonScriptResponse, PythonScriptExecutionStatus } from "@/types/news";
+import { NewsItem, PythonScriptNews, PythonScriptResponse, PythonScriptExecutionStatus, PythonScriptParams } from "@/types/news";
 
 // Define the API endpoint (this should be configured based on where the Python script is hosted)
 const PYTHON_API_ENDPOINT = '/api/scrape-news';
@@ -12,6 +12,8 @@ const API_CONFIG = {
   useLocalMock: true, // Set to false in production
   mockPythonExecution: true, // Simulate Python script execution
   mockCsvFilePath: '/data/radar/resultados.csv', // Mock CSV file path
+  pythonScriptPath: '/usr/local/bin/python3', // Path to Python executable
+  scriptPath: '/app/scripts/news_scraper.py', // Path to the Python script
 };
 
 /**
@@ -39,7 +41,7 @@ const pythonExecutionStatus: PythonScriptExecutionStatus = {
 };
 
 /**
- * Mock data for local development (simulating Python script response)
+ * Exact mock data matching the provided CSV output
  */
 const mockPythonResponse: PythonScriptResponse = {
   status: 'success',
@@ -118,6 +120,43 @@ const mockPythonResponse: PythonScriptResponse = {
 };
 
 /**
+ * Generate a command to execute the Python script with the given parameters
+ */
+function generatePythonCommand(params: PythonScriptParams): string {
+  const pythonExe = API_CONFIG.pythonScriptPath;
+  const scriptPath = API_CONFIG.scriptPath;
+  
+  // Escape quotes in parameters
+  const keywords = params.keywords.map(k => `"${k.replace(/"/g, '\\"')}"`).join(',');
+  const sources = params.sources.map(s => `"${s.replace(/"/g, '\\"')}"`).join(',');
+  const twitterUsers = params.twitterUsers.map(u => `"${u.replace(/"/g, '\\"')}"`).join(',');
+  
+  // Build the command
+  let command = `${pythonExe} ${scriptPath}`;
+  command += ` --keywords ${keywords}`;
+  command += ` --sources ${sources}`;
+  command += ` --twitter-users ${twitterUsers}`;
+  
+  if (params.outputPath) {
+    command += ` --output "${params.outputPath}"`;
+  }
+  
+  if (params.maxWorkers) {
+    command += ` --max-workers ${params.maxWorkers}`;
+  }
+  
+  if (params.validateLinks) {
+    command += ' --validate-links';
+  }
+  
+  if (params.currentDateOnly) {
+    command += ' --today-only';
+  }
+  
+  return command;
+}
+
+/**
  * Simulate Python script execution
  */
 export async function executePythonScript(options: NewsSearchOptions): Promise<PythonScriptExecutionStatus> {
@@ -135,6 +174,21 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
   pythonExecutionStatus.error = undefined;
   pythonExecutionStatus.startTime = new Date();
   pythonExecutionStatus.endTime = undefined;
+  
+  // Build Python script parameters
+  const scriptParams: PythonScriptParams = {
+    keywords: options.keywords || [],
+    sources: options.sources || [],
+    twitterUsers: options.twitterUsers || [],
+    outputPath: API_CONFIG.mockCsvFilePath,
+    maxWorkers: 5,
+    validateLinks: options.validateLinks,
+    currentDateOnly: options.currentDateOnly
+  };
+  
+  // Generate the command that would be executed
+  const command = generatePythonCommand(scriptParams);
+  console.log("Python command that would be executed:", command);
   
   if (API_CONFIG.mockPythonExecution) {
     // Simulate script execution with progress updates
@@ -161,20 +215,8 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
     try {
       const params = new URLSearchParams();
       
-      // Pass keywords (KEYWORDS in Python script)
-      if (options.keywords?.length) {
-        params.append('keywords', options.keywords.join(','));
-      }
-      
-      // Pass news sources (NEWS_SOURCES in Python script)
-      if (options.sources?.length) {
-        params.append('sources', options.sources.join(','));
-      }
-      
-      // Pass Twitter users (TWITTER_USERS in Python script)
-      if (options.twitterUsers?.length) {
-        params.append('twitter_users', options.twitterUsers.join(','));
-      }
+      // Pass script parameters
+      params.append('command', command);
       
       // Execute script endpoint
       const response = await fetch(`${PYTHON_API_ENDPOINT}/execute?${params.toString()}`);
@@ -235,7 +277,7 @@ export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> 
 }
 
 /**
- * Parse CSV content to NewsItem array
+ * Parse CSV content to NewsItem array - updated to handle encoding issues and match the exact format
  */
 function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   if (!csvContent) return [];
@@ -264,10 +306,10 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
     if (values.length < headers.length) continue;
     
     // Extract values and clean quotes if present
-    const title = cleanCsvValue(values[titleIndex]);
+    const title = decodeEntities(cleanCsvValue(values[titleIndex]));
     const date = cleanCsvValue(values[dateIndex]);
     const url = cleanCsvValue(values[urlIndex]);
-    const summary = cleanCsvValue(values[summaryIndex]);
+    const summary = decodeEntities(cleanCsvValue(values[summaryIndex]));
     
     // Extract source name from URL
     let sourceName = 'Fuente desconocida';
@@ -291,6 +333,15 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   }
   
   return newsItems;
+}
+
+/**
+ * Helper function to decode HTML entities that might appear in the data
+ */
+function decodeEntities(text: string): string {
+  const element = document.createElement('div');
+  element.innerHTML = text;
+  return element.textContent || text;
 }
 
 /**
@@ -374,11 +425,6 @@ export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Pro
           const itemDate = new Date(item.fecha).toISOString().split('T')[0];
           return itemDate === today;
         });
-      }
-      
-      // Filter by valid links if validateLinks is true
-      if (options.validateLinks) {
-        mockData.data = mockData.data?.filter(item => item.linkValido !== false);
       }
       
       console.log("Found news items after filtering:", mockData.data?.length || 0);
@@ -509,7 +555,6 @@ export function downloadNewsCSV(news: NewsItem[], filename = "resultados.csv"): 
 
 /**
  * Validate if a URL is valid and working
- * This is a client-side validation, actual validation should be done server-side
  */
 export async function validateUrl(url: string): Promise<boolean> {
   try {
@@ -519,7 +564,6 @@ export async function validateUrl(url: string): Promise<boolean> {
     }
     
     // In a real application, we would use a server-side function to check
-    // Since we can't make cross-origin HEAD requests directly from the browser
     const response = await fetch(`${PYTHON_API_ENDPOINT}/validate?url=${encodeURIComponent(url)}`);
     const data = await response.json();
     return data.valid === true;
