@@ -45,6 +45,8 @@ export interface SearchSettings {
   searchHistory?: string[];
   deepScrape?: boolean; // Enable deep scraping of internal pages
   twitterUsers?: string[]; // Add Twitter users to monitor
+  pythonScriptPath?: string; // Path to Python script
+  pythonExecutable?: string; // Python executable (python or python3)
 }
 
 export interface NewsFeedResponse {
@@ -65,4 +67,16 @@ export interface PythonScriptResponse {
   status: string;
   data: PythonScriptNews[];
   error?: string;
+  csvPath?: string; // Path to the generated CSV file
+}
+
+// Python script execution status
+export interface PythonScriptExecutionStatus {
+  running: boolean;
+  completed: boolean;
+  progress: number;
+  error?: string;
+  csvPath?: string;
+  startTime?: Date;
+  endTime?: Date;
 }

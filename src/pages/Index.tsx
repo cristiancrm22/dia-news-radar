@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Clock, Download } from "lucide-react";
@@ -11,7 +11,7 @@ import WhatsAppConfig from "@/components/WhatsAppConfig";
 import EmailConfig from "@/components/EmailConfig";
 import KeywordsConfig from "@/components/KeywordsConfig";
 import NewsService from "@/services/NewsService";
-import { NewsItem, NewsSource } from "@/types/news";
+import { NewsItem, PythonScriptExecutionStatus } from "@/types/news";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 
@@ -25,6 +25,7 @@ const Index = () => {
   const [validateLinks, setValidateLinks] = useState(true);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [lastSearchTime, setLastSearchTime] = useState<Date | null>(null);
+  const [pythonStatus, setPythonStatus] = useState<PythonScriptExecutionStatus | null>(null);
 
   useEffect(() => {
     // Fetch news on component mount
@@ -47,21 +48,29 @@ const Index = () => {
       setKeywords(settings.keywords || []);
     }
   }, [selectedTab]);
+  
+  // Set up interval to check Python script status
+  useEffect(() => {
+    if (!loading) return;
+    
+    const interval = setInterval(() => {
+      const status = NewsService.getPythonScriptStatus();
+      setPythonStatus(status);
+      setSearchProgress(status.progress);
+      
+      // If script completed, clear interval
+      if (status.completed) {
+        clearInterval(interval);
+      }
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const fetchNews = async () => {
     setLoading(true);
     setSearchProgress(0);
-    
-    // Set up progress tracking
-    const progressInterval = setInterval(() => {
-      setSearchProgress(prev => {
-        // Simulate progress up to 90% (the final 10% will be set when complete)
-        if (prev < 90) {
-          return prev + 5;
-        }
-        return prev;
-      });
-    }, 500);
+    setPythonStatus(null);
     
     try {
       // Update search settings with the current keywords
@@ -100,7 +109,6 @@ const Index = () => {
         variant: "destructive",
       });
     } finally {
-      clearInterval(progressInterval);
       // Ensure progress bar is complete
       setSearchProgress(100);
       
@@ -108,6 +116,7 @@ const Index = () => {
       setTimeout(() => {
         setSearchProgress(0);
         setLoading(false);
+        setPythonStatus(null);
       }, 500);
     }
   };
@@ -136,6 +145,33 @@ const Index = () => {
   const formatLastSearchTime = () => {
     if (!lastSearchTime) return "Nunca";
     return format(lastSearchTime, "dd/MM/yyyy HH:mm:ss", { locale: es });
+  };
+
+  // Format Python script execution time
+  const getPythonScriptInfo = () => {
+    if (!pythonStatus) return null;
+    
+    if (pythonStatus.running) {
+      return "Ejecutando script de Python...";
+    }
+    
+    if (pythonStatus.error) {
+      return `Error: ${pythonStatus.error}`;
+    }
+    
+    if (pythonStatus.completed) {
+      const startTime = pythonStatus.startTime ? new Date(pythonStatus.startTime) : null;
+      const endTime = pythonStatus.endTime ? new Date(pythonStatus.endTime) : null;
+      
+      if (startTime && endTime) {
+        const duration = (endTime.getTime() - startTime.getTime()) / 1000;
+        return `Script completado en ${duration.toFixed(1)} segundos`;
+      }
+      
+      return "Script completado";
+    }
+    
+    return null;
   };
 
   return (
@@ -200,7 +236,14 @@ const Index = () => {
               {/* Progress bar that shows during search */}
               {loading && searchProgress > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm text-gray-500 mb-1">Buscando noticias en todos los portales configurados...</p>
+                  <p className="text-sm text-gray-500 mb-1">
+                    {pythonStatus?.running 
+                      ? "Ejecutando script de Python para buscar noticias..." 
+                      : "Buscando noticias en todos los portales configurados..."}
+                  </p>
+                  {getPythonScriptInfo() && (
+                    <p className="text-xs text-gray-500 mb-1">{getPythonScriptInfo()}</p>
+                  )}
                   <Progress value={searchProgress} className="h-2" />
                 </div>
               )}

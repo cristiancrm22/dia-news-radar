@@ -1,6 +1,11 @@
-
-import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
-import PythonNewsAdapter, { fetchNewsFromPythonScript, downloadNewsCSV } from './PythonNewsAdapter';
+import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings, PythonScriptExecutionStatus } from "@/types/news";
+import PythonNewsAdapter, { 
+  fetchNewsFromPythonScript, 
+  downloadNewsCSV, 
+  executePythonScript, 
+  getPythonExecutionStatus, 
+  loadResultsFromCsv 
+} from './PythonNewsAdapter';
 
 // Configuration
 const USE_MOCK_DATA = true; // Change to false in production
@@ -258,13 +263,15 @@ class NewsService {
       const enabledSources = this.getSources().filter(source => source.enabled);
       const sourceUrls = enabledSources.map(source => source.url);
       
-      // Check if we should use the Python scraper
+      // Execute Python script and wait for completion
       if (USE_PYTHON_SCRAPER) {
         console.log("Using Python scraper for news with settings:", settings);
         console.log("Using enabled sources:", enabledSources.map(s => s.name));
-        return fetchNewsFromPythonScript({
+        
+        // Execute the Python script with our parameters
+        const scriptStatus = await executePythonScript({
           keywords: settings.keywords,
-          sources: sourceUrls, // Pass the enabled sources URLs
+          sources: sourceUrls,
           includeTwitter: settings.includeTwitter,
           maxResults: settings.maxResults,
           validateLinks: settings.validateLinks,
@@ -272,6 +279,26 @@ class NewsService {
           deepScrape: settings.deepScrape,
           twitterUsers: settings.twitterUsers
         });
+        
+        // If the script completed successfully, load results from CSV
+        if (scriptStatus.completed && !scriptStatus.error) {
+          return loadResultsFromCsv(scriptStatus.csvPath);
+        } else if (scriptStatus.error) {
+          console.error("Python script execution failed:", scriptStatus.error);
+          throw new Error(`Python script execution failed: ${scriptStatus.error}`);
+        } else {
+          // Fallback to the simulated version if script is still running
+          return fetchNewsFromPythonScript({
+            keywords: settings.keywords,
+            sources: sourceUrls,
+            includeTwitter: settings.includeTwitter,
+            maxResults: settings.maxResults,
+            validateLinks: settings.validateLinks,
+            currentDateOnly: settings.currentDateOnly,
+            deepScrape: settings.deepScrape,
+            twitterUsers: settings.twitterUsers
+          });
+        }
       }
       
       // If not using Python scraper, use the existing methods
@@ -290,6 +317,13 @@ class NewsService {
       console.error("Error fetching news:", error);
       return [];
     }
+  }
+
+  /**
+   * Get Python script execution status
+   */
+  static getPythonScriptStatus(): PythonScriptExecutionStatus {
+    return getPythonExecutionStatus();
   }
 
   /**
@@ -728,7 +762,7 @@ class NewsService {
         date: item.fecha || item.date || new Date().toISOString(),
         sourceUrl: item.url || '#',
         sourceName: this.extractSourceNameFromUrl(item.url || '') || 'Fuente desconocida',
-        topics: this.inferTopicsFromText(item.titulo + ' ' + item.resumen),
+        topics: this.inferTopicsFromText(item.titulo + ' ' + item.summary),
       }));
       
       return newsItems;
