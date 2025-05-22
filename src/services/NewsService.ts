@@ -1,3 +1,4 @@
+
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings, PythonScriptExecutionStatus } from "@/types/news";
 import PythonNewsAdapter, { 
   fetchNewsFromPythonScript, 
@@ -8,10 +9,10 @@ import PythonNewsAdapter, {
 } from './PythonNewsAdapter';
 
 // Configuration
-const USE_MOCK_DATA = true; // Change to false in production
+const USE_MOCK_DATA = false; // Change to false to use real API calls
 const USE_PYTHON_SCRAPER = true; // Set to true to use the Python script
 
-// Default sources (matching the Python script's NEWS_SOURCES)
+// Default sources
 const defaultSources: NewsSource[] = [
   { id: "1", name: "Clarín", url: "https://www.clarin.com", enabled: true },
   { id: "2", name: "La Nación", url: "https://www.lanacion.com.ar", enabled: true },
@@ -29,7 +30,7 @@ const defaultSources: NewsSource[] = [
   { id: "14", name: "Diputados BA", url: "https://diputadosbsas.com.ar", enabled: true }
 ];
 
-// Default Twitter users (matching the Python script's TWITTER_USERS)
+// Default Twitter users
 const defaultTwitterUsers: string[] = [
   "Senado_BA",
   "VeronicaMagario",
@@ -101,7 +102,8 @@ class NewsService {
           validateLinks: settings.validateLinks,
           currentDateOnly: settings.currentDateOnly,
           deepScrape: settings.deepScrape,
-          twitterUsers: settings.twitterUsers
+          twitterUsers: settings.twitterUsers,
+          pythonExecutable: settings.pythonExecutable
         });
         
         // If the script completed successfully, load results from CSV
@@ -111,17 +113,9 @@ class NewsService {
           console.error("Python script execution failed:", scriptStatus.error);
           throw new Error(`Python script execution failed: ${scriptStatus.error}`);
         } else {
-          // Fallback to the simulated version if script is still running
-          return fetchNewsFromPythonScript({
-            keywords: settings.keywords,
-            sources: sourceUrls,
-            includeTwitter: settings.includeTwitter,
-            maxResults: settings.maxResults,
-            validateLinks: settings.validateLinks,
-            currentDateOnly: settings.currentDateOnly,
-            deepScrape: settings.deepScrape,
-            twitterUsers: settings.twitterUsers
-          });
+          // If script is still running, we'll return an empty array for now
+          // The caller is responsible for checking execution status and loading results later
+          return [];
         }
       }
       
@@ -152,6 +146,13 @@ class NewsService {
    */
   static getPythonScriptStatus(): PythonScriptExecutionStatus {
     return getPythonExecutionStatus();
+  }
+
+  /**
+   * Load results from CSV file
+   */
+  static loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> {
+    return loadResultsFromCsv(csvPath);
   }
 
   /**

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,7 +26,9 @@ const Index = () => {
   const [lastSearchTime, setLastSearchTime] = useState<Date | null>(null);
   const [pythonStatus, setPythonStatus] = useState<PythonScriptExecutionStatus | null>(null);
   const [pythonOutput, setPythonOutput] = useState<string[]>([]);
-  const [showOutput, setShowOutput] = useState(false);
+  const [showOutput, setShowOutput] = useState(true);
+  const [consoleAutoScroll, setConsoleAutoScroll] = useState(true);
+  const [consoleRef, setConsoleRef] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Fetch news on component mount
@@ -51,7 +52,14 @@ const Index = () => {
     }
   }, [selectedTab]);
   
-  // Set up interval to check Python script status
+  // Auto-scroll the console output when new lines are added
+  useEffect(() => {
+    if (consoleAutoScroll && consoleRef) {
+      consoleRef.scrollTop = consoleRef.scrollHeight;
+    }
+  }, [pythonOutput, consoleAutoScroll, consoleRef]);
+  
+  // Set up interval to check Python script status when script is running
   useEffect(() => {
     if (!loading) return;
     
@@ -60,34 +68,46 @@ const Index = () => {
       setPythonStatus(status);
       setSearchProgress(status.progress);
       
-      // Simulate Python script output
-      if (status.running && Math.random() > 0.7) {
-        // Add a random output message
-        const outputs = [
-          "🔍 Buscando noticias en clarin.com...",
-          "🔍 Buscando noticias en lanacion.com.ar...",
-          "🔍 Buscando noticias en pagina12.com.ar...",
-          "🔍 Buscando noticias en infobae.com...",
-          "🔍 Buscando noticias en latecla.info...",
-          "📄 Procesando artículo encontrado...",
-          "📰 Noticia: Kicillof visitó 25 de Mayo y apuntó contra el intendente que ahora es libertario",
-          "📰 Noticia: Milei criticó duramente a los gobernadores provinciales",
-          "📰 Noticia: El Senado provincial aprobó la ley de emergencia económica",
-          "🐦 Analizando tweets de @Senado_BA...",
-          "🐦 Analizando tweets de @VeronicaMagario..."
-        ];
-        
-        setPythonOutput(prev => [...prev, outputs[Math.floor(Math.random() * outputs.length)]]);
+      // Update terminal output
+      if (status.output && status.output.length > 0) {
+        setPythonOutput(status.output);
       }
       
-      // If script completed, clear interval
-      if (status.completed) {
+      // If script completed or encountered an error, clear interval
+      if (status.completed || status.error) {
         clearInterval(interval);
+        
+        // If completed successfully, load results
+        if (status.completed && !status.error && status.csvPath) {
+          loadResultsFromCsv(status.csvPath);
+        }
       }
-    }, 500);
+    }, 1000);
     
     return () => clearInterval(interval);
   }, [loading]);
+
+  const loadResultsFromCsv = async (csvPath: string) => {
+    try {
+      const results = await NewsService.loadResultsFromCsv(csvPath);
+      setNews(results);
+      setLastSearchTime(new Date());
+      
+      toast({
+        title: "Resultados cargados",
+        description: `Se cargaron ${results.length} noticias desde el archivo CSV`,
+      });
+    } catch (error) {
+      console.error("Error loading results from CSV:", error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los resultados desde el CSV",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchNews = async () => {
     setLoading(true);
@@ -126,13 +146,6 @@ const Index = () => {
       // Complete the progress bar
       setSearchProgress(100);
       
-      // Add final Python output
-      setPythonOutput(prev => [
-        ...prev,
-        `✅ Total de noticias encontradas: ${fetchedNews.length}`,
-        "💾 Resultados guardados en /data/radar/resultados.csv"
-      ]);
-      
       toast({
         title: "Noticias actualizadas",
         description: `Se cargaron ${fetchedNews.length} noticias`,
@@ -154,14 +167,11 @@ const Index = () => {
         variant: "destructive",
       });
     } finally {
-      // Ensure progress bar is complete
-      setSearchProgress(100);
-      
-      // Reset progress after a delay
-      setTimeout(() => {
-        setSearchProgress(0);
+      // Keep the loading state true until the Python script completes
+      const status = NewsService.getPythonScriptStatus();
+      if (!status.running) {
         setLoading(false);
-      }, 500);
+      }
     }
   };
   
@@ -307,13 +317,29 @@ const Index = () => {
               )}
               
               {/* Python script output console */}
-              {(showOutput || loading) && pythonOutput.length > 0 && (
-                <div className="mt-4 p-4 bg-black text-green-400 font-mono text-sm rounded-lg h-64 overflow-y-auto">
-                  {pythonOutput.map((line, index) => (
-                    <div key={index} className="py-1">
-                      {line}
-                    </div>
-                  ))}
+              {showOutput && pythonOutput.length > 0 && (
+                <div className="mt-4">
+                  <div 
+                    ref={setConsoleRef}
+                    className="p-4 bg-black text-green-400 font-mono text-sm rounded-lg h-64 overflow-y-auto"
+                  >
+                    {pythonOutput.map((line, index) => (
+                      <div key={index} className="py-1">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end mt-2">
+                    <label className="flex items-center text-sm text-gray-500">
+                      <input 
+                        type="checkbox" 
+                        checked={consoleAutoScroll} 
+                        onChange={() => setConsoleAutoScroll(!consoleAutoScroll)}
+                        className="mr-2"
+                      />
+                      Auto-scroll
+                    </label>
+                  </div>
                 </div>
               )}
             </div>

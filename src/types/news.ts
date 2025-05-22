@@ -68,6 +68,7 @@ export interface PythonScriptResponse {
   data: PythonScriptNews[];
   error?: string;
   csvPath?: string; // Path to the generated CSV file
+  output?: string[]; // Terminal output from the script
 }
 
 // Python script execution status
@@ -79,6 +80,7 @@ export interface PythonScriptExecutionStatus {
   csvPath?: string;
   startTime?: Date;
   endTime?: Date;
+  output: string[]; // Terminal output from the Python script
 }
 
 // Python script execution parameters
@@ -90,4 +92,13 @@ export interface PythonScriptParams {
   maxWorkers?: number;
   validateLinks?: boolean;
   currentDateOnly?: boolean;
+}
+
+// Python script execution API response
+export interface PythonScriptExecutionResponse {
+  status: string;
+  pid?: number;
+  output?: string[];
+  error?: string;
+  csvPath?: string;
 }
