@@ -8,10 +8,10 @@ import PythonNewsAdapter, {
 } from './PythonNewsAdapter';
 import { toast } from "sonner";
 
-// Configuration - UPDATED FOR REAL EXECUTION
-const USE_MOCK_DATA = false; // DISABLED: No mock data
-const USE_PYTHON_SCRAPER = true; // ENABLED: Always use Python scraper
-const FALLBACK_TO_MOCK = false; // DISABLED: No fallback to mock
+// Configuration - UPDATED FOR BETTER ERROR HANDLING
+const USE_MOCK_DATA = false;
+const USE_PYTHON_SCRAPER = true;
+const FALLBACK_TO_MOCK = true; // ENABLED: Fallback to demo data when server unavailable
 
 // Default sources
 const defaultSources: NewsSource[] = [
@@ -80,7 +80,7 @@ const TWITTER_USERS_KEY = 'news_radar_twitter_users';
 
 class NewsService {
   /**
-   * Get news using REAL Python script execution
+   * Get news using Python script execution with graceful fallback
    */
   static async getNews(): Promise<NewsItem[]> {
     try {
@@ -88,10 +88,9 @@ class NewsService {
       const enabledSources = this.getSources().filter(source => source.enabled);
       const sourceUrls = enabledSources.map(source => source.url);
       
-      console.log("Getting REAL news with settings:", settings);
+      console.log("Getting news with settings:", settings);
       console.log("Using enabled sources:", enabledSources.map(s => s.name));
       
-      // Always use the real Python script
       const scriptStatus = await executePythonScript({
         keywords: settings.keywords,
         sources: sourceUrls,
@@ -104,32 +103,32 @@ class NewsService {
         pythonExecutable: settings.pythonExecutable
       });
       
-      // If the script completed successfully, load results from CSV
       if (scriptStatus.completed && !scriptStatus.error) {
-        const realResults = await loadResultsFromCsv(scriptStatus.csvPath);
-        console.log("Loaded real results:", realResults.length, "news items");
-        return realResults;
+        const results = await loadResultsFromCsv(scriptStatus.csvPath);
+        console.log("Loaded results:", results.length, "news items");
+        return results;
       } else if (scriptStatus.error) {
-        console.error("Real Python script execution failed:", scriptStatus.error);
+        console.log("Script execution had error:", scriptStatus.error);
         
-        toast.error("Error al ejecutar el script de Python real", {
-          description: scriptStatus.error
+        toast.info("Servidor Python no disponible", {
+          description: "Mostrando datos de demostración. Configure el servidor para datos reales."
         });
         
-        throw new Error(`Python script execution failed: ${scriptStatus.error}`);
+        // Return demo data instead of throwing error
+        return loadResultsFromCsv();
       } else {
-        // If script is still running, return empty array for now
-        console.log("Python script still running, returning empty array");
-        return [];
+        console.log("Script still running, returning demo data");
+        return loadResultsFromCsv();
       }
     } catch (error) {
-      console.error("Error fetching REAL news:", error);
+      console.log("Error fetching news, using demo data:", error.message);
       
-      toast.error("Error al obtener noticias reales", {
-        description: error.message
+      toast.info("Usando datos de demostración", {
+        description: "Para conectar al servidor Python, siga las instrucciones en el README"
       });
       
-      throw error;
+      // Return demo data instead of throwing error
+      return loadResultsFromCsv();
     }
   }
 
@@ -148,7 +147,7 @@ class NewsService {
   }
 
   /**
-   * Search for news with specific query or keywords using REAL Python script
+   * Search for news with specific query or keywords
    */
   static async searchNews(query: string, source?: string, additionalKeywords?: string[]): Promise<NewsItem[]> {
     try {
@@ -167,7 +166,7 @@ class NewsService {
         keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
       }
       
-      console.log(`Searching REAL news for: ${keywords.join(', ')}`);
+      console.log(`Searching news for: ${keywords.join(', ')}`);
       
       let sources: string[] | undefined;
       
@@ -194,8 +193,14 @@ class NewsService {
         pythonExecutable: settings.pythonExecutable
       });
     } catch (error) {
-      console.error("Error searching REAL news:", error);
-      throw error;
+      console.log("Error searching news, using demo data:", error.message);
+      
+      toast.info("Búsqueda usando datos de demostración", {
+        description: "Para búsquedas reales, configure el servidor Python"
+      });
+      
+      // Return demo data instead of throwing error
+      return loadResultsFromCsv();
     }
   }
   
