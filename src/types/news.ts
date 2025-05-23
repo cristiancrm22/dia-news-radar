@@ -1,4 +1,5 @@
 
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -92,6 +93,7 @@ export interface PythonScriptParams {
   maxWorkers?: number;
   validateLinks?: boolean;
   currentDateOnly?: boolean;
+  pythonExecutable?: string; // Added missing property
 }
 
 // Python script execution API response
@@ -102,3 +104,4 @@ export interface PythonScriptExecutionResponse {
   error?: string;
   csvPath?: string;
 }
+

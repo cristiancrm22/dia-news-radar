@@ -1,3 +1,4 @@
+
 /**
  * Service to communicate with the Python news scraper
  */
@@ -29,6 +30,7 @@ export interface NewsSearchOptions {
   currentDateOnly?: boolean;
   deepScrape?: boolean;
   twitterUsers?: string[];
+  pythonExecutable?: string;
 }
 
 // Store Python script execution status globally
