@@ -7,17 +7,17 @@ import { toast } from "sonner";
 // Define the API endpoint (this should be configured based on where the Python script is hosted)
 const PYTHON_API_ENDPOINT = '/api/scraper';
 
-// Configuration for the API
+// Configuration for the API - UPDATED FOR REAL EXECUTION
 const API_CONFIG = {
-  useLocalMock: true, // Set to true to use mock data when API is unavailable
-  mockPythonExecution: true, // Set to true for simulated Python script execution
-  mockCsvFilePath: '/data/radar/resultados.csv', // CSV file path
-  pythonScriptPath: 'python3', // Path to Python executable
-  scriptPath: 'news_scraper.py', // Path to the Python script
-  useProxy: true, // Use a proxy for API calls in development
-  proxyUrl: 'http://localhost:3001', // Proxy URL for development
-  connectionRetries: 2, // Number of retries for connection failures
-  retryDelay: 1000, // Delay between retries in milliseconds
+  useLocalMock: false, // CHANGED: Set to false to use real Python script
+  mockPythonExecution: false, // CHANGED: Set to false for real Python script execution
+  mockCsvFilePath: '/data/radar/resultados.csv',
+  pythonScriptPath: 'python3',
+  scriptPath: 'news_scraper.py',
+  useProxy: false, // CHANGED: Disable proxy for production
+  proxyUrl: 'http://localhost:8000', // CHANGED: Backend server URL
+  connectionRetries: 3, // INCREASED: More retries for real connections
+  retryDelay: 2000, // INCREASED: More delay between retries
 };
 
 /**
@@ -178,13 +178,12 @@ function generatePythonCommand(params: PythonScriptParams): string {
 }
 
 /**
- * Helper function to get the base URL for API calls
+ * Helper function to get the base URL for API calls - UPDATED FOR REAL SERVER
  */
 function getApiBaseUrl(): string {
-  if (API_CONFIG.useProxy) {
-    return API_CONFIG.proxyUrl;
-  }
-  return window.location.origin;
+  // For development, use localhost:8000
+  // For production, this should be configured properly
+  return API_CONFIG.proxyUrl;
 }
 
 /**
@@ -204,7 +203,7 @@ async function fetchWithRetries(url: string, options?: RequestInit, retries = AP
 }
 
 /**
- * Execute the Python script for real
+ * Execute the Python script for real - UPDATED FOR ACTUAL EXECUTION
  */
 export async function executePythonScript(options: NewsSearchOptions): Promise<PythonScriptExecutionStatus> {
   // If script is already running, return current status
@@ -212,7 +211,7 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
     return pythonExecutionStatus;
   }
 
-  console.log("Starting Python script execution with options:", options);
+  console.log("Starting REAL Python script execution with options:", options);
   
   // Reset status
   pythonExecutionStatus.running = true;
@@ -221,440 +220,162 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
   pythonExecutionStatus.error = undefined;
   pythonExecutionStatus.startTime = new Date();
   pythonExecutionStatus.endTime = undefined;
-  pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias..."];
+  pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias real..."];
   
   // Build Python script parameters
   const scriptParams: PythonScriptParams = {
     keywords: options.keywords || [],
     sources: options.sources || [],
     twitterUsers: options.twitterUsers || [],
-    outputPath: API_CONFIG.mockCsvFilePath,
+    outputPath: '/tmp/resultados_' + Date.now() + '.csv',
     maxWorkers: 5,
     validateLinks: options.validateLinks,
     currentDateOnly: options.currentDateOnly,
-    pythonExecutable: options.pythonExecutable
+    pythonExecutable: options.pythonExecutable || 'python3'
   };
   
-  if (API_CONFIG.mockPythonExecution) {
-    // Simulate script execution with progress updates
-    return new Promise((resolve) => {
-      const totalSteps = 10;
-      let currentStep = 0;
-      
-      const interval = setInterval(() => {
-        currentStep++;
-        pythonExecutionStatus.progress = Math.round((currentStep / totalSteps) * 100);
-        
-        // Add a simulated output message
-        if (currentStep % 2 === 0) {
-          const messages = [
-            "🔍 Buscando noticias en clarin.com...",
-            "🔍 Buscando noticias en lanacion.com.ar...",
-            "🔍 Buscando noticias en pagina12.com.ar...",
-            "📄 Procesando artículo encontrado...",
-            "📰 Noticia: Kicillof visitó 25 de Mayo",
-            "🐦 Analizando tweets de @VeronicaMagario..."
-          ];
-          pythonExecutionStatus.output.push(messages[Math.floor(Math.random() * messages.length)]);
-        }
-        
-        if (currentStep >= totalSteps) {
-          clearInterval(interval);
-          pythonExecutionStatus.running = false;
-          pythonExecutionStatus.completed = true;
-          pythonExecutionStatus.endTime = new Date();
-          pythonExecutionStatus.csvPath = API_CONFIG.mockCsvFilePath;
-          pythonExecutionStatus.output.push("✅ Total de noticias encontradas: 10");
-          pythonExecutionStatus.output.push("💾 Resultados guardados en " + API_CONFIG.mockCsvFilePath);
-          resolve(pythonExecutionStatus);
-        }
-      }, 500); // Simulate steps taking 500ms each
-    });
-  } else {
-    // Real implementation to execute the Python script
-    try {
-      // Generate script parameters
-      const execParams = {
-        scriptContent: `
-import concurrent.futures
-import requests
-from bs4 import BeautifulSoup
-from newspaper import Article
-import csv
-from datetime import datetime
-import argparse
-import sys
-import json
+  try {
+    // Prepare the execution payload
+    const execPayload = {
+      keywords: scriptParams.keywords,
+      sources: scriptParams.sources,
+      twitterUsers: scriptParams.twitterUsers,
+      validateLinks: scriptParams.validateLinks,
+      currentDateOnly: scriptParams.currentDateOnly,
+      outputPath: scriptParams.outputPath,
+      maxWorkers: scriptParams.maxWorkers,
+      pythonExecutable: scriptParams.pythonExecutable
+    };
 
-# Parse arguments
-parser = argparse.ArgumentParser(description='News Radar - Scrape news from multiple sources')
-parser.add_argument('--keywords', type=str, default="", help='Comma-separated list of keywords')
-parser.add_argument('--sources', type=str, default="", help='Comma-separated list of news sources')
-parser.add_argument('--twitter-users', type=str, default="", help='Comma-separated list of Twitter users')
-parser.add_argument('--output', type=str, default="/data/radar/resultados.csv", help='Output CSV file path')
-parser.add_argument('--max-workers', type=int, default=5, help='Maximum number of worker threads')
-parser.add_argument('--validate-links', action='store_true', help='Validate links')
-parser.add_argument('--today-only', action='store_true', help='Only include news from today')
-
-args = parser.parse_args()
-
-# Parse keywords
-KEYWORDS = []
-if args.keywords:
-    try:
-        KEYWORDS = json.loads(args.keywords)
-    except:
-        KEYWORDS = [k.strip() for k in args.keywords.split(',') if k.strip()]
-
-# Parse sources
-NEWS_SOURCES = []
-if args.sources:
-    try:
-        NEWS_SOURCES = json.loads(args.sources)
-    except:
-        NEWS_SOURCES = [s.strip() for s in args.sources.split(',') if s.strip()]
-
-# Parse Twitter users
-TWITTER_USERS = []
-if args.twitter_users:
-    try:
-        TWITTER_USERS = json.loads(args.twitter_users)
-    except:
-        TWITTER_USERS = [u.strip() for u in args.twitter_users.split(',') if u.strip()]
-
-# If no sources specified, use defaults
-if not NEWS_SOURCES:
-    NEWS_SOURCES = [
-        "https://www.clarin.com",
-        "https://www.lanacion.com.ar",
-        "https://www.pagina12.com.ar",
-        "https://www.infobae.com",
-        "https://www.ambito.com",
-        "https://www.latecla.info"
-    ]
-
-# If no Twitter users specified, use defaults
-if not TWITTER_USERS:
-    TWITTER_USERS = [
-        "Senado_BA",
-        "VeronicaMagario",
-        "BAProvincia",
-        "DiputadosBA"
-    ]
-
-# Configuration
-MAX_WORKERS = args.max_workers
-TODAY = datetime.now().date()
-VALIDATE_LINKS = args.validate_links
-TODAY_ONLY = args.today_only
-OUTPUT_PATH = args.output
-HEADERS = {'User-Agent': 'Mozilla/5.0'}
-
-# Intentar importar snscrape
-try:
-    import snscrape.modules.twitter as sntwitter
-    SN_AVAILABLE = True
-    print("Twitter disponible mediante snscrape")
-except Exception as e:
-    print(f"⚠️ Twitter desactivado: {e}")
-    SN_AVAILABLE = False
-
-def is_relevant(text):
-    if not KEYWORDS:
-        return True  # If no keywords specified, all content is relevant
-    return any(keyword.lower() in text.lower() for keyword in KEYWORDS)
-
-def process_article(url):
-    try:
-        article = Article(url)
-        article.download()
-        article.parse()
-        if article.publish_date:
-            publish_date = article.publish_date.date()
-        else:
-            publish_date = TODAY
-        
-        if (not TODAY_ONLY or publish_date == TODAY) and is_relevant(article.text):
-            print(f"📰 Noticia: {article.title}")
-            return {
-                "titulo": article.title,
-                "fecha": datetime.now().isoformat(),
-                "url": url,
-                "resumen": article.text[:300].replace('\\n', ' ')
-            }
-    except Exception as e:
-        print(f"⚠️ Error procesando {url}: {e}")
-    return None
-
-def scrape_site(source_url):
-    try:
-        print(f"🔍 Buscando noticias en {source_url}...")
-        response = requests.get(source_url, headers=HEADERS, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        links = set(a['href'] for a in soup.find_all('a', href=True) if a['href'].startswith('http'))
-        results = []
-        for link in links:
-            article_data = process_article(link)
-            if article_data:
-                results.append(article_data)
-        return results
-    except Exception as e:
-        print(f"❌ Error accediendo a {source_url}: {e}")
-        return []
-
-def scrape_twitter():
-    results = []
-    if not SN_AVAILABLE:
-        return results
-
-    for user in TWITTER_USERS:
-        try:
-            print(f"🐦 Analizando tweets de @{user}...")
-            for tweet in sntwitter.TwitterUserScraper(user).get_items():
-                tweet_date = tweet.date.date()
-                if TODAY_ONLY and tweet_date != TODAY:
-                    break
-                if is_relevant(tweet.content):
-                    print(f"🐦 Tweet relevante de @{user}: {tweet.content[:50]}...")
-                    results.append({
-                        "titulo": f"Tweet de @{user} sobre nuevos proyectos provinciales",
-                        "fecha": datetime.now().isoformat(),
-                        "url": f"https://twitter.com/{user}/status/{tweet.id}",
-                        "resumen": tweet.content[:300].replace('\\n', ' ')
-                    })
-        except Exception as e:
-            print(f"⚠️ Error accediendo a tweets de @{user}: {e}")
-    return results
-
-def main():
-    all_results = []
-
-    print(f"🔑 Palabras clave: {', '.join(KEYWORDS) if KEYWORDS else 'ninguna (se incluirán todas las noticias)'}")
-    print(f"🌐 Fuentes configuradas: {len(NEWS_SOURCES)}")
-
-    # Noticias web
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(scrape_site, url): url for url in NEWS_SOURCES}
-        for future in concurrent.futures.as_completed(futures):
-            results = future.result()
-            all_results.extend(results)
-
-    # Twitter si disponible
-    if SN_AVAILABLE:
-        twitter_results = scrape_twitter()
-        all_results.extend(twitter_results)
-
-    print(f"\\n✅ Total de noticias encontradas: {len(all_results)}")
+    console.log("Executing Python script with real parameters:", execPayload);
     
-    # Guardar resultados
-    try:
-        with open(OUTPUT_PATH, "w", newline='', encoding="utf-8") as f:
-             writer = csv.DictWriter(f, fieldnames=["titulo", "fecha", "url", "resumen"])
-             writer.writeheader()
-             writer.writerows(all_results)
-        print(f"💾 Resultados guardados en {OUTPUT_PATH}")
-    except Exception as e:
-        print(f"❌ Error guardando resultados: {e}")
-
-if __name__ == "__main__":
-    main()
-        `,
-        command: generatePythonCommand(scriptParams),
-        parameters: {
-          keywords: scriptParams.keywords,
-          sources: scriptParams.sources,
-          twitterUsers: scriptParams.twitterUsers,
-          validateLinks: scriptParams.validateLinks,
-          todayOnly: scriptParams.currentDateOnly,
-          outputPath: scriptParams.outputPath
-        }
-      };
-
-      // Log the execution parameters
-      console.log("Executing Python script with params:", execParams);
-      
-      // Make API call to execute the script
-      const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/execute`;
-      console.log("API URL:", apiUrl);
-      
-      // Use fetchWithRetries instead of regular fetch
-      try {
-        const response = await fetchWithRetries(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(execParams)
-        });
-        
-        // Parse response
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status} ${response.statusText}`);
-        }
-        
-        const data = await response.json() as PythonScriptExecutionResponse;
-        console.log("Script execution response:", data);
-        
-        if (data.status === 'success') {
-          pythonExecutionStatus.output.push(`🚀 Script ejecutándose con PID: ${data.pid}`);
-          
-          // Poll for script completion
-          return pollScriptExecution(data.pid);
-        } else {
-          throw new Error(data.error || 'Error desconocido ejecutando el script');
-        }
-      } catch (error) {
-        console.error("API connection failed:", error);
-        
-        // Show toast notification
-        toast.error("No se pudo conectar con el servidor Python. Usando datos simulados.", {
-          description: "Verifique que el servidor de Python esté funcionando y accesible."
-        });
-        
-        // Fall back to mock execution
-        pythonExecutionStatus.output.push("⚠️ No se pudo conectar con el servidor. Usando datos simulados.");
-        
-        // Simulate execution with mock data
-        return simulateMockExecution();
-      }
-    } catch (error) {
-      console.error("Error executing Python script:", error);
-      pythonExecutionStatus.running = false;
-      pythonExecutionStatus.error = error.message;
-      pythonExecutionStatus.output.push(`❌ Error: ${error.message}`);
-      
-      // Fall back to mock execution
-      pythonExecutionStatus.output.push("⚠️ Usando datos simulados debido al error.");
-      return simulateMockExecution();
+    // Make API call to execute the script
+    const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/execute`;
+    console.log("Real API URL:", apiUrl);
+    
+    const response = await fetchWithRetries(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(execPayload)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error: ${response.status} - ${errorText}`);
     }
+    
+    const data = await response.json() as PythonScriptExecutionResponse;
+    console.log("Real script execution response:", data);
+    
+    if (data.status === 'success') {
+      pythonExecutionStatus.output.push(`🚀 Script ejecutándose con PID: ${data.pid}`);
+      pythonExecutionStatus.output.push("📡 Conectado al servidor Python real");
+      
+      // Poll for script completion
+      return pollRealScriptExecution(data.pid);
+    } else {
+      throw new Error(data.error || 'Error desconocido ejecutando el script real');
+    }
+  } catch (error) {
+    console.error("Error executing REAL Python script:", error);
+    pythonExecutionStatus.running = false;
+    pythonExecutionStatus.error = `Error ejecutando script real: ${error.message}`;
+    pythonExecutionStatus.output.push(`❌ Error de conexión: ${error.message}`);
+    
+    // Show error notification
+    toast.error("Error conectando con el servidor Python", {
+      description: "Verifique que el servidor esté ejecutándose en el puerto 8000"
+    });
+    
+    throw error;
   }
 }
 
 /**
- * Simulate execution with mock data as a fallback
+ * Poll for REAL script execution status
  */
-function simulateMockExecution(): Promise<PythonScriptExecutionStatus> {
-  return new Promise((resolve) => {
-    // Mark as using mock data
-    pythonExecutionStatus.output.push("ℹ️ Usando datos simulados como respaldo.");
-    
-    // Simulate a short delay to make the fallback appear more realistic
-    setTimeout(() => {
-      pythonExecutionStatus.running = false;
-      pythonExecutionStatus.completed = true;
-      pythonExecutionStatus.progress = 100;
-      pythonExecutionStatus.endTime = new Date();
-      pythonExecutionStatus.csvPath = API_CONFIG.mockCsvFilePath;
-      pythonExecutionStatus.output.push("✅ Simulación completada con datos de muestra.");
-      pythonExecutionStatus.output.push(`💾 Resultados disponibles como muestra.`);
-      resolve(pythonExecutionStatus);
-    }, 1500);
-  });
-}
-
-/**
- * Poll for script execution status
- */
-async function pollScriptExecution(pid?: number): Promise<PythonScriptExecutionStatus> {
-  return new Promise((resolve) => {
-    // Immediately add some initial output
-    pythonExecutionStatus.output.push("🔍 Buscando noticias en fuentes configuradas...");
+async function pollRealScriptExecution(pid?: number): Promise<PythonScriptExecutionStatus> {
+  return new Promise((resolve, reject) => {
+    pythonExecutionStatus.output.push("🔍 Monitoreando progreso del script real...");
     
     const pollInterval = setInterval(async () => {
       try {
-        // Make API call to check script status
         const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/status${pid ? `?pid=${pid}` : ''}`;
         
-        try {
-          const response = await fetchWithRetries(apiUrl);
-          
-          if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          console.log("Script status:", data);
-          
-          // Update progress based on returned status
-          if (data.status === 'running') {
-            // Increment progress
-            pythonExecutionStatus.progress = Math.min(95, pythonExecutionStatus.progress + 5);
-            
-            // Add output if present
-            if (data.output && Array.isArray(data.output) && data.output.length > 0) {
-              // Only add new output lines that we haven't seen before
-              const currentOutputLength = pythonExecutionStatus.output.length;
-              const newOutput = data.output.slice(currentOutputLength);
-              
-              if (newOutput.length > 0) {
-                pythonExecutionStatus.output.push(...newOutput);
-              }
-            }
-          } else if (data.status === 'completed') {
-            // Script completed
-            clearInterval(pollInterval);
-            pythonExecutionStatus.running = false;
-            pythonExecutionStatus.completed = true;
-            pythonExecutionStatus.progress = 100;
-            pythonExecutionStatus.endTime = new Date();
-            pythonExecutionStatus.csvPath = data.csvPath || API_CONFIG.mockCsvFilePath;
-            
-            // Add output if present
-            if (data.output && Array.isArray(data.output)) {
-              // Find only new lines not already in our output
-              const existingOutput = new Set(pythonExecutionStatus.output);
-              const newOutput = data.output.filter((line: string) => !existingOutput.has(line));
-              
-              if (newOutput.length > 0) {
-                pythonExecutionStatus.output.push(...newOutput);
-              }
-            }
-            
-            // Add completion message if not already present
-            if (!pythonExecutionStatus.output.some(line => line.includes("Total de noticias encontradas"))) {
-              pythonExecutionStatus.output.push(`✅ Script completado correctamente`);
-            }
-            
-            if (!pythonExecutionStatus.output.some(line => line.includes("Resultados guardados"))) {
-              pythonExecutionStatus.output.push(`💾 Resultados guardados en ${pythonExecutionStatus.csvPath}`);
-            }
-            
-            resolve(pythonExecutionStatus);
-          } else if (data.status === 'error') {
-            // Script error
-            clearInterval(pollInterval);
-            pythonExecutionStatus.running = false;
-            pythonExecutionStatus.completed = false;
-            pythonExecutionStatus.error = data.error;
-            pythonExecutionStatus.endTime = new Date();
-            pythonExecutionStatus.output.push(`❌ Error: ${data.error}`);
-            
-            // Fall back to mock execution
-            pythonExecutionStatus.output.push("⚠️ Usando datos simulados debido al error.");
-            simulateMockExecution().then(resolve);
-          }
-        } catch (pollingError) {
-          console.error("Error polling script status:", pollingError);
-          // Don't clear interval on polling error, try again
-          pythonExecutionStatus.output.push(`⚠️ Error temporal consultando estado: ${pollingError.message}`);
+        const response = await fetchWithRetries(apiUrl);
+        
+        if (!response.ok) {
+          throw new Error(`Status API error: ${response.status}`);
         }
-      } catch (error) {
-        // Handle any unexpected errors in the polling process
-        console.error("Unexpected error in polling:", error);
+        
+        const data = await response.json();
+        console.log("Real script status:", data);
+        
+        // Update progress based on real status
+        if (data.status === 'running') {
+          pythonExecutionStatus.progress = data.progress || Math.min(95, pythonExecutionStatus.progress + 10);
+          
+          // Add real output if present
+          if (data.output && Array.isArray(data.output)) {
+            const newLines = data.output.filter((line: string) => 
+              !pythonExecutionStatus.output.includes(line)
+            );
+            if (newLines.length > 0) {
+              pythonExecutionStatus.output.push(...newLines);
+            }
+          }
+        } else if (data.status === 'completed') {
+          // Real script completed
+          clearInterval(pollInterval);
+          pythonExecutionStatus.running = false;
+          pythonExecutionStatus.completed = true;
+          pythonExecutionStatus.progress = 100;
+          pythonExecutionStatus.endTime = new Date();
+          pythonExecutionStatus.csvPath = data.csvPath;
+          
+          // Add completion output
+          if (data.output && Array.isArray(data.output)) {
+            const newLines = data.output.filter((line: string) => 
+              !pythonExecutionStatus.output.includes(line)
+            );
+            if (newLines.length > 0) {
+              pythonExecutionStatus.output.push(...newLines);
+            }
+          }
+          
+          pythonExecutionStatus.output.push(`✅ Script completado exitosamente`);
+          pythonExecutionStatus.output.push(`📄 Archivo CSV: ${pythonExecutionStatus.csvPath}`);
+          
+          resolve(pythonExecutionStatus);
+        } else if (data.status === 'error') {
+          // Real script error
+          clearInterval(pollInterval);
+          pythonExecutionStatus.running = false;
+          pythonExecutionStatus.completed = false;
+          pythonExecutionStatus.error = data.error;
+          pythonExecutionStatus.endTime = new Date();
+          pythonExecutionStatus.output.push(`❌ Error del script: ${data.error}`);
+          
+          reject(new Error(data.error));
+        }
+      } catch (pollingError) {
+        console.error("Error polling real script status:", pollingError);
+        pythonExecutionStatus.output.push(`⚠️ Error consultando estado: ${pollingError.message}`);
       }
-    }, 2000); // Poll every 2 seconds
+    }, 3000); // Poll every 3 seconds for real execution
     
-    // Set a timeout to stop polling after 5 minutes (safety)
+    // Set a timeout to stop polling after 10 minutes
     setTimeout(() => {
       if (pythonExecutionStatus.running) {
         clearInterval(pollInterval);
         pythonExecutionStatus.running = false;
-        pythonExecutionStatus.error = "Tiempo de ejecución excedido (5 minutos)";
-        pythonExecutionStatus.output.push("⏱️ Tiempo de ejecución excedido (5 minutos)");
-        pythonExecutionStatus.output.push("⚠️ Usando datos simulados debido al timeout.");
-        simulateMockExecution().then(resolve);
+        pythonExecutionStatus.error = "Tiempo de ejecución excedido (10 minutos)";
+        pythonExecutionStatus.output.push("⏱️ Timeout después de 10 minutos");
+        reject(new Error("Script execution timeout"));
       }
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
   });
 }
 
@@ -666,32 +387,29 @@ export function getPythonExecutionStatus(): PythonScriptExecutionStatus {
 }
 
 /**
- * Load results from CSV file generated by Python script
+ * Load results from CSV file generated by REAL Python script
  */
 export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> {
-  if (API_CONFIG.useLocalMock) {
-    console.log("Using mock data instead of loading from CSV");
-    return transformPythonResponseToNewsItems(mockPythonResponse);
-  }
-  
   try {
-    // In a real implementation, this would call the backend API to get the CSV content
-    const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/csv?path=${encodeURIComponent(csvPath || pythonExecutionStatus.csvPath || API_CONFIG.mockCsvFilePath)}`;
-    const response = await fetch(apiUrl);
+    console.log("Loading REAL results from CSV:", csvPath);
+    
+    const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/csv?path=${encodeURIComponent(csvPath || pythonExecutionStatus.csvPath || '/tmp/resultados.csv')}`;
+    const response = await fetchWithRetries(apiUrl);
     
     if (!response.ok) {
-      throw new Error(`Failed to load CSV: ${response.statusText}`);
+      throw new Error(`Failed to load real CSV: ${response.statusText}`);
     }
     
     const csvContent = await response.text();
+    console.log("Real CSV content received:", csvContent.substring(0, 200) + "...");
+    
     const parsedNews = parseCsvToNewsItems(csvContent);
+    console.log("Parsed real news items:", parsedNews.length);
+    
     return parsedNews;
   } catch (error) {
-    console.error("Error loading results from CSV:", error);
-    
-    // Fallback to mock data if CSV loading fails
-    console.log("Falling back to mock data due to CSV loading error");
-    return transformPythonResponseToNewsItems(mockPythonResponse);
+    console.error("Error loading REAL results from CSV:", error);
+    throw error;
   }
 }
 
@@ -780,93 +498,30 @@ function cleanCsvValue(value: string): string {
 }
 
 /**
- * Fetch news from the Python script
+ * Fetch news from the REAL Python script
  */
 export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Promise<NewsItem[]> {
   try {
-    console.log("Fetching news from Python script with options:", options);
+    console.log("Fetching news from REAL Python script with options:", options);
     
-    // First execute the Python script
+    // Execute the real Python script
     const executionStatus = await executePythonScript(options);
     
-    // If using mocks, directly return the mock data
-    if (API_CONFIG.useLocalMock) {
-      console.log("Using mock data for Python script response");
-      
-      // Create a deep copy of mock data
-      const mockData = JSON.parse(JSON.stringify(mockPythonResponse));
-      
-      // Filter news by sources if provided
-      if (options.sources && options.sources.length > 0) {
-        console.log("Filtering by sources:", options.sources);
-        mockData.data = mockData.data?.filter(item => {
-          try {
-            const itemUrl = new URL(item.url);
-            // Check if the item URL contains any of the source URLs
-            return options.sources?.some(sourceUrl => {
-              try {
-                const source = new URL(sourceUrl);
-                return itemUrl.hostname.includes(source.hostname) || 
-                       source.hostname.includes(itemUrl.hostname);
-              } catch {
-                // If the source URL is invalid, try simple string matching
-                return item.url.includes(sourceUrl);
-              }
-            });
-          } catch {
-            // If parsing URL fails, fall back to simple string matching
-            return options.sources?.some(sourceUrl => item.url.includes(sourceUrl));
-          }
-        });
-      }
-      
-      // Filter news by keywords if provided - improved case-insensitive matching
-      if (options.keywords?.length) {
-        // Convert all keywords to lowercase for case-insensitive matching
-        const keywords = options.keywords.map(k => k.toLowerCase());
-        console.log("Filtering by keywords:", keywords);
-        
-        mockData.data = mockData.data?.filter(item => 
-          keywords.some(keyword => 
-            (item.titulo?.toLowerCase().includes(keyword) || 
-             item.resumen?.toLowerCase().includes(keyword))
-          )
-        );
-      }
-      
-      // Filter Twitter results unless includeTwitter is true
-      if (options.includeTwitter === false) {
-        mockData.data = mockData.data?.filter(item => !item.url.includes('twitter.com'));
-      }
-      
-      // Filter by date if currentDateOnly is true
-      if (options.currentDateOnly) {
-        const today = new Date().toISOString().split('T')[0];
-        mockData.data = mockData.data?.filter(item => {
-          const itemDate = new Date(item.fecha).toISOString().split('T')[0];
-          return itemDate === today;
-        });
-      }
-      
-      console.log("Found news items after filtering:", mockData.data?.length || 0);
-      return transformPythonResponseToNewsItems(mockData);
-    }
-
-    // If execution failed, return empty array
+    // If execution failed, throw error
     if (executionStatus.error) {
-      console.error("Python script execution failed:", executionStatus.error);
-      return [];
+      console.error("Real Python script execution failed:", executionStatus.error);
+      throw new Error(executionStatus.error);
     }
     
-    // If execution completed, load results from CSV
+    // If execution completed, load real results from CSV
     if (executionStatus.completed && executionStatus.csvPath) {
       return loadResultsFromCsv(executionStatus.csvPath);
     }
     
-    // If execution is still running, return empty array for now
+    // If execution is still running, return empty array
     return [];
   } catch (error) {
-    console.error("Error fetching news from Python script:", error);
+    console.error("Error fetching news from REAL Python script:", error);
     throw error;
   }
 }

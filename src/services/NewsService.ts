@@ -8,10 +8,10 @@ import PythonNewsAdapter, {
 } from './PythonNewsAdapter';
 import { toast } from "sonner";
 
-// Configuration
-const USE_MOCK_DATA = false; // Change to false to use real API calls
-const USE_PYTHON_SCRAPER = true; // Set to true to use the Python script
-const FALLBACK_TO_MOCK = true; // Fallback to mock data on error
+// Configuration - UPDATED FOR REAL EXECUTION
+const USE_MOCK_DATA = false; // DISABLED: No mock data
+const USE_PYTHON_SCRAPER = true; // ENABLED: Always use Python scraper
+const FALLBACK_TO_MOCK = false; // DISABLED: No fallback to mock
 
 // Default sources
 const defaultSources: NewsSource[] = [
@@ -22,7 +22,7 @@ const defaultSources: NewsSource[] = [
   { id: "5", name: "Ámbito", url: "https://www.ambito.com", enabled: true },
   { id: "6", name: "El Cronista", url: "https://www.cronista.com", enabled: true },
   { id: "7", name: "Perfil", url: "https://www.perfil.com", enabled: true },
-  { id: "8", name: "El Día", url: "https://www.eldia.com", enabled: true },
+  { id: "8", name: "El Día", url: "https://www.eldia.com.ar", enabled: true },
   { id: "9", name: "Hoy", url: "https://diariohoy.net", enabled: true },
   { id: "10", name: "La Tecla", url: "https://www.latecla.info", enabled: true },
   { id: "11", name: "Infocielo", url: "https://infocielo.com", enabled: true },
@@ -80,100 +80,19 @@ const TWITTER_USERS_KEY = 'news_radar_twitter_users';
 
 class NewsService {
   /**
-   * Get news using either mock data, Python script, or API
+   * Get news using REAL Python script execution
    */
   static async getNews(): Promise<NewsItem[]> {
     try {
       const settings = this.getSearchSettings();
-      // Get enabled sources
       const enabledSources = this.getSources().filter(source => source.enabled);
       const sourceUrls = enabledSources.map(source => source.url);
       
-      // Execute Python script and wait for completion
-      if (USE_PYTHON_SCRAPER) {
-        console.log("Using Python scraper for news with settings:", settings);
-        console.log("Using enabled sources:", enabledSources.map(s => s.name));
-        
-        try {
-          // Execute the Python script with our parameters
-          const scriptStatus = await executePythonScript({
-            keywords: settings.keywords,
-            sources: sourceUrls,
-            includeTwitter: settings.includeTwitter,
-            maxResults: settings.maxResults,
-            validateLinks: settings.validateLinks,
-            currentDateOnly: settings.currentDateOnly,
-            deepScrape: settings.deepScrape,
-            twitterUsers: settings.twitterUsers,
-            pythonExecutable: settings.pythonExecutable
-          });
-          
-          // If the script completed successfully, load results from CSV
-          if (scriptStatus.completed && !scriptStatus.error) {
-            return loadResultsFromCsv(scriptStatus.csvPath);
-          } else if (scriptStatus.error) {
-            console.error("Python script execution failed:", scriptStatus.error);
-            
-            // Show error notification
-            toast.error("Error al ejecutar el script de Python", {
-              description: scriptStatus.error
-            });
-            
-            if (FALLBACK_TO_MOCK) {
-              console.log("Falling back to mock data due to script error");
-              toast.info("Usando datos de muestra como alternativa");
-              return fetchNewsFromPythonScript({
-                keywords: settings.keywords,
-                sources: sourceUrls,
-                includeTwitter: settings.includeTwitter,
-                maxResults: settings.maxResults,
-                validateLinks: settings.validateLinks,
-                currentDateOnly: settings.currentDateOnly,
-                deepScrape: settings.deepScrape,
-                twitterUsers: settings.twitterUsers
-              });
-            } else {
-              throw new Error(`Python script execution failed: ${scriptStatus.error}`);
-            }
-          } else {
-            // If script is still running, we'll return an empty array for now
-            // The caller is responsible for checking execution status and loading results later
-            return [];
-          }
-        } catch (error) {
-          console.error("Error in Python script execution:", error);
-          
-          // Show error notification
-          toast.error("Error al ejecutar el script de Python", {
-            description: error.message
-          });
-          
-          if (FALLBACK_TO_MOCK) {
-            console.log("Falling back to mock data due to script error");
-            toast.info("Usando datos de muestra como alternativa");
-            return fetchNewsFromPythonScript({
-              keywords: settings.keywords,
-              sources: sourceUrls,
-              includeTwitter: settings.includeTwitter,
-              maxResults: settings.maxResults,
-              validateLinks: settings.validateLinks,
-              currentDateOnly: settings.currentDateOnly,
-              deepScrape: settings.deepScrape,
-              twitterUsers: settings.twitterUsers
-            });
-          } else {
-            throw error; // Re-throw the error if not falling back
-          }
-        }
-      }
+      console.log("Getting REAL news with settings:", settings);
+      console.log("Using enabled sources:", enabledSources.map(s => s.name));
       
-      // If not using Python scraper, use the existing methods
-      if (!USE_MOCK_DATA) {
-        return this.getNewsFromRealSources(settings.keywords);
-      }
-      
-      // Use simulated Python script results
-      return fetchNewsFromPythonScript({
+      // Always use the real Python script
+      const scriptStatus = await executePythonScript({
         keywords: settings.keywords,
         sources: sourceUrls,
         includeTwitter: settings.includeTwitter,
@@ -181,17 +100,36 @@ class NewsService {
         validateLinks: settings.validateLinks,
         currentDateOnly: settings.currentDateOnly,
         deepScrape: settings.deepScrape,
-        twitterUsers: settings.twitterUsers
+        twitterUsers: settings.twitterUsers,
+        pythonExecutable: settings.pythonExecutable
       });
-    } catch (error) {
-      console.error("Error fetching news:", error);
       
-      // Show error notification
-      toast.error("Error al obtener noticias", {
+      // If the script completed successfully, load results from CSV
+      if (scriptStatus.completed && !scriptStatus.error) {
+        const realResults = await loadResultsFromCsv(scriptStatus.csvPath);
+        console.log("Loaded real results:", realResults.length, "news items");
+        return realResults;
+      } else if (scriptStatus.error) {
+        console.error("Real Python script execution failed:", scriptStatus.error);
+        
+        toast.error("Error al ejecutar el script de Python real", {
+          description: scriptStatus.error
+        });
+        
+        throw new Error(`Python script execution failed: ${scriptStatus.error}`);
+      } else {
+        // If script is still running, return empty array for now
+        console.log("Python script still running, returning empty array");
+        return [];
+      }
+    } catch (error) {
+      console.error("Error fetching REAL news:", error);
+      
+      toast.error("Error al obtener noticias reales", {
         description: error.message
       });
       
-      return [];
+      throw error;
     }
   }
 
@@ -210,75 +148,54 @@ class NewsService {
   }
 
   /**
-   * Search for news with specific query or keywords
+   * Search for news with specific query or keywords using REAL Python script
    */
   static async searchNews(query: string, source?: string, additionalKeywords?: string[]): Promise<NewsItem[]> {
     try {
-      // If query is empty but we have additional keywords, use those
       if ((!query || query.trim() === "") && (!additionalKeywords || additionalKeywords.length === 0)) {
         return this.getNews();
       }
       
-      // Prepare keywords array from query and additional keywords
       const keywords: string[] = [];
       
-      // Add query if it exists
       if (query && query.trim() !== "") {
         keywords.push(query.trim());
-        
-        // Add query to search history
         this.addToSearchHistory(query.trim());
       }
       
-      // Add additional keywords if they exist
       if (additionalKeywords && additionalKeywords.length > 0) {
         keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
       }
       
-      // If we're using the Python scraper, search with it
-      if (USE_PYTHON_SCRAPER) {
-        console.log(`Searching for ${keywords.join(', ')} using Python scraper`);
-        let sources: string[] | undefined;
-        
-        if (source) {
-          sources = [source];
-        } else {
-          // Get enabled sources from settings
-          const allSources = this.getSources();
-          sources = allSources
-            .filter(s => s.enabled)
-            .map(s => s.url);
-        }
-        
-        const settings = this.getSearchSettings();
-        
-        return fetchNewsFromPythonScript({
-          keywords: keywords,
-          sources: sources,
-          includeTwitter: settings.includeTwitter,
-          maxResults: settings.maxResults,
-          validateLinks: settings.validateLinks,
-          currentDateOnly: settings.currentDateOnly,
-          deepScrape: settings.deepScrape,
-          twitterUsers: settings.twitterUsers
-        });
-      }
-
-      // If not using Python scraper, fall back to existing search method
-      if (!USE_MOCK_DATA) {
-        return this.getNewsFromRealSources(keywords);
+      console.log(`Searching REAL news for: ${keywords.join(', ')}`);
+      
+      let sources: string[] | undefined;
+      
+      if (source) {
+        sources = [source];
+      } else {
+        const allSources = this.getSources();
+        sources = allSources
+          .filter(s => s.enabled)
+          .map(s => s.url);
       }
       
-      // Use the mock data with filtering
+      const settings = this.getSearchSettings();
+      
       return fetchNewsFromPythonScript({
         keywords: keywords,
-        sources: source ? [source] : undefined,
-        includeTwitter: true,
-        validateLinks: true
+        sources: sources,
+        includeTwitter: settings.includeTwitter,
+        maxResults: settings.maxResults,
+        validateLinks: settings.validateLinks,
+        currentDateOnly: settings.currentDateOnly,
+        deepScrape: settings.deepScrape,
+        twitterUsers: settings.twitterUsers,
+        pythonExecutable: settings.pythonExecutable
       });
     } catch (error) {
-      console.error("Error searching news:", error);
-      return [];
+      console.error("Error searching REAL news:", error);
+      throw error;
     }
   }
   
