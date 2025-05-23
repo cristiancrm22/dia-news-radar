@@ -1,5 +1,3 @@
-
-
 export interface NewsItem {
   id: string;
   title: string;
@@ -104,4 +102,3 @@ export interface PythonScriptExecutionResponse {
   error?: string;
   csvPath?: string;
 }
-

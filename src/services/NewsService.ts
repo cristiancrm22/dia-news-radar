@@ -1,4 +1,3 @@
-
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings, PythonScriptExecutionStatus } from "@/types/news";
 import PythonNewsAdapter, { 
   fetchNewsFromPythonScript, 
@@ -7,10 +6,12 @@ import PythonNewsAdapter, {
   getPythonExecutionStatus, 
   loadResultsFromCsv 
 } from './PythonNewsAdapter';
+import { toast } from "sonner";
 
 // Configuration
 const USE_MOCK_DATA = false; // Change to false to use real API calls
 const USE_PYTHON_SCRAPER = true; // Set to true to use the Python script
+const FALLBACK_TO_MOCK = true; // Fallback to mock data on error
 
 // Default sources
 const defaultSources: NewsSource[] = [
@@ -93,29 +94,76 @@ class NewsService {
         console.log("Using Python scraper for news with settings:", settings);
         console.log("Using enabled sources:", enabledSources.map(s => s.name));
         
-        // Execute the Python script with our parameters
-        const scriptStatus = await executePythonScript({
-          keywords: settings.keywords,
-          sources: sourceUrls,
-          includeTwitter: settings.includeTwitter,
-          maxResults: settings.maxResults,
-          validateLinks: settings.validateLinks,
-          currentDateOnly: settings.currentDateOnly,
-          deepScrape: settings.deepScrape,
-          twitterUsers: settings.twitterUsers,
-          pythonExecutable: settings.pythonExecutable
-        });
-        
-        // If the script completed successfully, load results from CSV
-        if (scriptStatus.completed && !scriptStatus.error) {
-          return loadResultsFromCsv(scriptStatus.csvPath);
-        } else if (scriptStatus.error) {
-          console.error("Python script execution failed:", scriptStatus.error);
-          throw new Error(`Python script execution failed: ${scriptStatus.error}`);
-        } else {
-          // If script is still running, we'll return an empty array for now
-          // The caller is responsible for checking execution status and loading results later
-          return [];
+        try {
+          // Execute the Python script with our parameters
+          const scriptStatus = await executePythonScript({
+            keywords: settings.keywords,
+            sources: sourceUrls,
+            includeTwitter: settings.includeTwitter,
+            maxResults: settings.maxResults,
+            validateLinks: settings.validateLinks,
+            currentDateOnly: settings.currentDateOnly,
+            deepScrape: settings.deepScrape,
+            twitterUsers: settings.twitterUsers,
+            pythonExecutable: settings.pythonExecutable
+          });
+          
+          // If the script completed successfully, load results from CSV
+          if (scriptStatus.completed && !scriptStatus.error) {
+            return loadResultsFromCsv(scriptStatus.csvPath);
+          } else if (scriptStatus.error) {
+            console.error("Python script execution failed:", scriptStatus.error);
+            
+            // Show error notification
+            toast.error("Error al ejecutar el script de Python", {
+              description: scriptStatus.error
+            });
+            
+            if (FALLBACK_TO_MOCK) {
+              console.log("Falling back to mock data due to script error");
+              toast.info("Usando datos de muestra como alternativa");
+              return fetchNewsFromPythonScript({
+                keywords: settings.keywords,
+                sources: sourceUrls,
+                includeTwitter: settings.includeTwitter,
+                maxResults: settings.maxResults,
+                validateLinks: settings.validateLinks,
+                currentDateOnly: settings.currentDateOnly,
+                deepScrape: settings.deepScrape,
+                twitterUsers: settings.twitterUsers
+              });
+            } else {
+              throw new Error(`Python script execution failed: ${scriptStatus.error}`);
+            }
+          } else {
+            // If script is still running, we'll return an empty array for now
+            // The caller is responsible for checking execution status and loading results later
+            return [];
+          }
+        } catch (error) {
+          console.error("Error in Python script execution:", error);
+          
+          // Show error notification
+          toast.error("Error al ejecutar el script de Python", {
+            description: error.message
+          });
+          
+          if (FALLBACK_TO_MOCK) {
+            console.log("Falling back to mock data due to script error");
+            toast.info("Usando datos de muestra como alternativa");
+            return fetchNewsFromPythonScript({
+              keywords: settings.keywords,
+              sources: sourceUrls,
+              includeTwitter: settings.includeTwitter,
+              maxResults: settings.maxResults,
+              validateLinks: settings.validateLinks,
+              currentDateOnly: settings.currentDateOnly,
+              deepScrape: settings.deepScrape,
+              twitterUsers: settings.twitterUsers
+            });
+          } else {
+            throw error; // Re-throw the error if not falling back
+          }
         }
       }
       
@@ -137,6 +185,12 @@ class NewsService {
       });
     } catch (error) {
       console.error("Error fetching news:", error);
+      
+      // Show error notification
+      toast.error("Error al obtener noticias", {
+        description: error.message
+      });
+      
       return [];
     }
   }

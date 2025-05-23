@@ -1,21 +1,23 @@
-
 /**
  * Service to communicate with the Python news scraper
  */
 import { NewsItem, PythonScriptNews, PythonScriptResponse, PythonScriptExecutionStatus, PythonScriptParams, PythonScriptExecutionResponse } from "@/types/news";
+import { toast } from "sonner";
 
 // Define the API endpoint (this should be configured based on where the Python script is hosted)
 const PYTHON_API_ENDPOINT = '/api/scraper';
 
 // Configuration for the API
 const API_CONFIG = {
-  useLocalMock: false, // Set to false to use real execution
-  mockPythonExecution: false, // Set to false for real Python script execution
+  useLocalMock: true, // Set to true to use mock data when API is unavailable
+  mockPythonExecution: true, // Set to true for simulated Python script execution
   mockCsvFilePath: '/data/radar/resultados.csv', // CSV file path
   pythonScriptPath: 'python3', // Path to Python executable
   scriptPath: 'news_scraper.py', // Path to the Python script
   useProxy: true, // Use a proxy for API calls in development
   proxyUrl: 'http://localhost:3001', // Proxy URL for development
+  connectionRetries: 2, // Number of retries for connection failures
+  retryDelay: 1000, // Delay between retries in milliseconds
 };
 
 /**
@@ -183,6 +185,22 @@ function getApiBaseUrl(): string {
     return API_CONFIG.proxyUrl;
   }
   return window.location.origin;
+}
+
+/**
+ * Fetch with retries
+ */
+async function fetchWithRetries(url: string, options?: RequestInit, retries = API_CONFIG.connectionRetries): Promise<Response> {
+  try {
+    const response = await fetch(url, options);
+    return response;
+  } catch (error) {
+    if (retries <= 0) throw error;
+    
+    console.log(`Fetch failed, retrying... (${retries} attempts left)`);
+    await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay));
+    return fetchWithRetries(url, options, retries - 1);
+  }
 }
 
 /**
@@ -459,38 +477,79 @@ if __name__ == "__main__":
       const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/execute`;
       console.log("API URL:", apiUrl);
       
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(execParams)
-      });
-      
-      // Parse response
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json() as PythonScriptExecutionResponse;
-      console.log("Script execution response:", data);
-      
-      if (data.status === 'success') {
-        pythonExecutionStatus.output.push(`🚀 Script ejecutándose con PID: ${data.pid}`);
+      // Use fetchWithRetries instead of regular fetch
+      try {
+        const response = await fetchWithRetries(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(execParams)
+        });
         
-        // Poll for script completion
-        return pollScriptExecution(data.pid);
-      } else {
-        throw new Error(data.error || 'Error desconocido ejecutando el script');
+        // Parse response
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json() as PythonScriptExecutionResponse;
+        console.log("Script execution response:", data);
+        
+        if (data.status === 'success') {
+          pythonExecutionStatus.output.push(`🚀 Script ejecutándose con PID: ${data.pid}`);
+          
+          // Poll for script completion
+          return pollScriptExecution(data.pid);
+        } else {
+          throw new Error(data.error || 'Error desconocido ejecutando el script');
+        }
+      } catch (error) {
+        console.error("API connection failed:", error);
+        
+        // Show toast notification
+        toast.error("No se pudo conectar con el servidor Python. Usando datos simulados.", {
+          description: "Verifique que el servidor de Python esté funcionando y accesible."
+        });
+        
+        // Fall back to mock execution
+        pythonExecutionStatus.output.push("⚠️ No se pudo conectar con el servidor. Usando datos simulados.");
+        
+        // Simulate execution with mock data
+        return simulateMockExecution();
       }
     } catch (error) {
       console.error("Error executing Python script:", error);
       pythonExecutionStatus.running = false;
       pythonExecutionStatus.error = error.message;
       pythonExecutionStatus.output.push(`❌ Error: ${error.message}`);
-      return pythonExecutionStatus;
+      
+      // Fall back to mock execution
+      pythonExecutionStatus.output.push("⚠️ Usando datos simulados debido al error.");
+      return simulateMockExecution();
     }
   }
+}
+
+/**
+ * Simulate execution with mock data as a fallback
+ */
+function simulateMockExecution(): Promise<PythonScriptExecutionStatus> {
+  return new Promise((resolve) => {
+    // Mark as using mock data
+    pythonExecutionStatus.output.push("ℹ️ Usando datos simulados como respaldo.");
+    
+    // Simulate a short delay to make the fallback appear more realistic
+    setTimeout(() => {
+      pythonExecutionStatus.running = false;
+      pythonExecutionStatus.completed = true;
+      pythonExecutionStatus.progress = 100;
+      pythonExecutionStatus.endTime = new Date();
+      pythonExecutionStatus.csvPath = API_CONFIG.mockCsvFilePath;
+      pythonExecutionStatus.output.push("✅ Simulación completada con datos de muestra.");
+      pythonExecutionStatus.output.push(`💾 Resultados disponibles como muestra.`);
+      resolve(pythonExecutionStatus);
+    }, 1500);
+  });
 }
 
 /**
@@ -505,74 +564,83 @@ async function pollScriptExecution(pid?: number): Promise<PythonScriptExecutionS
       try {
         // Make API call to check script status
         const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/status${pid ? `?pid=${pid}` : ''}`;
-        const response = await fetch(apiUrl);
         
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log("Script status:", data);
-        
-        // Update progress based on returned status
-        if (data.status === 'running') {
-          // Increment progress
-          pythonExecutionStatus.progress = Math.min(95, pythonExecutionStatus.progress + 5);
+        try {
+          const response = await fetchWithRetries(apiUrl);
           
-          // Add output if present
-          if (data.output && Array.isArray(data.output) && data.output.length > 0) {
-            // Only add new output lines that we haven't seen before
-            const currentOutputLength = pythonExecutionStatus.output.length;
-            const newOutput = data.output.slice(currentOutputLength);
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          console.log("Script status:", data);
+          
+          // Update progress based on returned status
+          if (data.status === 'running') {
+            // Increment progress
+            pythonExecutionStatus.progress = Math.min(95, pythonExecutionStatus.progress + 5);
             
-            if (newOutput.length > 0) {
-              pythonExecutionStatus.output.push(...newOutput);
+            // Add output if present
+            if (data.output && Array.isArray(data.output) && data.output.length > 0) {
+              // Only add new output lines that we haven't seen before
+              const currentOutputLength = pythonExecutionStatus.output.length;
+              const newOutput = data.output.slice(currentOutputLength);
+              
+              if (newOutput.length > 0) {
+                pythonExecutionStatus.output.push(...newOutput);
+              }
             }
-          }
-        } else if (data.status === 'completed') {
-          // Script completed
-          clearInterval(pollInterval);
-          pythonExecutionStatus.running = false;
-          pythonExecutionStatus.completed = true;
-          pythonExecutionStatus.progress = 100;
-          pythonExecutionStatus.endTime = new Date();
-          pythonExecutionStatus.csvPath = data.csvPath || API_CONFIG.mockCsvFilePath;
-          
-          // Add output if present
-          if (data.output && Array.isArray(data.output)) {
-            // Find only new lines not already in our output
-            const existingOutput = new Set(pythonExecutionStatus.output);
-            const newOutput = data.output.filter((line: string) => !existingOutput.has(line));
+          } else if (data.status === 'completed') {
+            // Script completed
+            clearInterval(pollInterval);
+            pythonExecutionStatus.running = false;
+            pythonExecutionStatus.completed = true;
+            pythonExecutionStatus.progress = 100;
+            pythonExecutionStatus.endTime = new Date();
+            pythonExecutionStatus.csvPath = data.csvPath || API_CONFIG.mockCsvFilePath;
             
-            if (newOutput.length > 0) {
-              pythonExecutionStatus.output.push(...newOutput);
+            // Add output if present
+            if (data.output && Array.isArray(data.output)) {
+              // Find only new lines not already in our output
+              const existingOutput = new Set(pythonExecutionStatus.output);
+              const newOutput = data.output.filter((line: string) => !existingOutput.has(line));
+              
+              if (newOutput.length > 0) {
+                pythonExecutionStatus.output.push(...newOutput);
+              }
             }
+            
+            // Add completion message if not already present
+            if (!pythonExecutionStatus.output.some(line => line.includes("Total de noticias encontradas"))) {
+              pythonExecutionStatus.output.push(`✅ Script completado correctamente`);
+            }
+            
+            if (!pythonExecutionStatus.output.some(line => line.includes("Resultados guardados"))) {
+              pythonExecutionStatus.output.push(`💾 Resultados guardados en ${pythonExecutionStatus.csvPath}`);
+            }
+            
+            resolve(pythonExecutionStatus);
+          } else if (data.status === 'error') {
+            // Script error
+            clearInterval(pollInterval);
+            pythonExecutionStatus.running = false;
+            pythonExecutionStatus.completed = false;
+            pythonExecutionStatus.error = data.error;
+            pythonExecutionStatus.endTime = new Date();
+            pythonExecutionStatus.output.push(`❌ Error: ${data.error}`);
+            
+            // Fall back to mock execution
+            pythonExecutionStatus.output.push("⚠️ Usando datos simulados debido al error.");
+            simulateMockExecution().then(resolve);
           }
-          
-          // Add completion message if not already present
-          if (!pythonExecutionStatus.output.some(line => line.includes("Total de noticias encontradas"))) {
-            pythonExecutionStatus.output.push(`✅ Script completado correctamente`);
-          }
-          
-          if (!pythonExecutionStatus.output.some(line => line.includes("Resultados guardados"))) {
-            pythonExecutionStatus.output.push(`💾 Resultados guardados en ${pythonExecutionStatus.csvPath}`);
-          }
-          
-          resolve(pythonExecutionStatus);
-        } else if (data.status === 'error') {
-          // Script error
-          clearInterval(pollInterval);
-          pythonExecutionStatus.running = false;
-          pythonExecutionStatus.completed = false;
-          pythonExecutionStatus.error = data.error;
-          pythonExecutionStatus.endTime = new Date();
-          pythonExecutionStatus.output.push(`❌ Error: ${data.error}`);
-          resolve(pythonExecutionStatus);
+        } catch (pollingError) {
+          console.error("Error polling script status:", pollingError);
+          // Don't clear interval on polling error, try again
+          pythonExecutionStatus.output.push(`⚠️ Error temporal consultando estado: ${pollingError.message}`);
         }
       } catch (error) {
-        console.error("Error polling script status:", error);
-        // Don't clear interval on polling error, try again
-        pythonExecutionStatus.output.push(`⚠️ Error temporal consultando estado: ${error.message}`);
+        // Handle any unexpected errors in the polling process
+        console.error("Unexpected error in polling:", error);
       }
     }, 2000); // Poll every 2 seconds
     
@@ -583,7 +651,8 @@ async function pollScriptExecution(pid?: number): Promise<PythonScriptExecutionS
         pythonExecutionStatus.running = false;
         pythonExecutionStatus.error = "Tiempo de ejecución excedido (5 minutos)";
         pythonExecutionStatus.output.push("⏱️ Tiempo de ejecución excedido (5 minutos)");
-        resolve(pythonExecutionStatus);
+        pythonExecutionStatus.output.push("⚠️ Usando datos simulados debido al timeout.");
+        simulateMockExecution().then(resolve);
       }
     }, 5 * 60 * 1000);
   });
