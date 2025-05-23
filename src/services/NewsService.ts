@@ -8,10 +8,10 @@ import PythonNewsAdapter, {
 } from './PythonNewsAdapter';
 import { toast } from "sonner";
 
-// Configuration - UPDATED FOR BETTER ERROR HANDLING
+// Configuration - REAL MODE ONLY
 const USE_MOCK_DATA = false;
 const USE_PYTHON_SCRAPER = true;
-const FALLBACK_TO_MOCK = true; // ENABLED: Fallback to demo data when server unavailable
+const FALLBACK_TO_MOCK = false; // DISABLED: No fallback to demo data
 
 // Default sources
 const defaultSources: NewsSource[] = [
@@ -80,55 +80,36 @@ const TWITTER_USERS_KEY = 'news_radar_twitter_users';
 
 class NewsService {
   /**
-   * Get news using Python script execution with graceful fallback
+   * Get news using Python script execution - REAL MODE ONLY
    */
   static async getNews(): Promise<NewsItem[]> {
-    try {
-      const settings = this.getSearchSettings();
-      const enabledSources = this.getSources().filter(source => source.enabled);
-      const sourceUrls = enabledSources.map(source => source.url);
-      
-      console.log("Getting news with settings:", settings);
-      console.log("Using enabled sources:", enabledSources.map(s => s.name));
-      
-      const scriptStatus = await executePythonScript({
-        keywords: settings.keywords,
-        sources: sourceUrls,
-        includeTwitter: settings.includeTwitter,
-        maxResults: settings.maxResults,
-        validateLinks: settings.validateLinks,
-        currentDateOnly: settings.currentDateOnly,
-        deepScrape: settings.deepScrape,
-        twitterUsers: settings.twitterUsers,
-        pythonExecutable: settings.pythonExecutable
-      });
-      
-      if (scriptStatus.completed && !scriptStatus.error) {
-        const results = await loadResultsFromCsv(scriptStatus.csvPath);
-        console.log("Loaded results:", results.length, "news items");
-        return results;
-      } else if (scriptStatus.error) {
-        console.log("Script execution had error:", scriptStatus.error);
-        
-        toast.info("Servidor Python no disponible", {
-          description: "Mostrando datos de demostración. Configure el servidor para datos reales."
-        });
-        
-        // Return demo data instead of throwing error
-        return loadResultsFromCsv();
-      } else {
-        console.log("Script still running, returning demo data");
-        return loadResultsFromCsv();
-      }
-    } catch (error) {
-      console.log("Error fetching news, using demo data:", error.message);
-      
-      toast.info("Usando datos de demostración", {
-        description: "Para conectar al servidor Python, siga las instrucciones en el README"
-      });
-      
-      // Return demo data instead of throwing error
-      return loadResultsFromCsv();
+    const settings = this.getSearchSettings();
+    const enabledSources = this.getSources().filter(source => source.enabled);
+    const sourceUrls = enabledSources.map(source => source.url);
+    
+    console.log("Getting REAL news with settings:", settings);
+    console.log("Using enabled sources:", enabledSources.map(s => s.name));
+    
+    const scriptStatus = await executePythonScript({
+      keywords: settings.keywords,
+      sources: sourceUrls,
+      includeTwitter: settings.includeTwitter,
+      maxResults: settings.maxResults,
+      validateLinks: settings.validateLinks,
+      currentDateOnly: settings.currentDateOnly,
+      deepScrape: settings.deepScrape,
+      twitterUsers: settings.twitterUsers,
+      pythonExecutable: settings.pythonExecutable
+    });
+    
+    if (scriptStatus.completed && !scriptStatus.error && scriptStatus.csvPath) {
+      const results = await loadResultsFromCsv(scriptStatus.csvPath);
+      console.log("Loaded REAL results:", results.length, "news items");
+      return results;
+    } else if (scriptStatus.error) {
+      throw new Error(`Error ejecutando script: ${scriptStatus.error}`);
+    } else {
+      throw new Error("Script no completado correctamente");
     }
   }
 
@@ -147,61 +128,50 @@ class NewsService {
   }
 
   /**
-   * Search for news with specific query or keywords
+   * Search for news with specific query or keywords - REAL MODE ONLY
    */
   static async searchNews(query: string, source?: string, additionalKeywords?: string[]): Promise<NewsItem[]> {
-    try {
-      if ((!query || query.trim() === "") && (!additionalKeywords || additionalKeywords.length === 0)) {
-        return this.getNews();
-      }
-      
-      const keywords: string[] = [];
-      
-      if (query && query.trim() !== "") {
-        keywords.push(query.trim());
-        this.addToSearchHistory(query.trim());
-      }
-      
-      if (additionalKeywords && additionalKeywords.length > 0) {
-        keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
-      }
-      
-      console.log(`Searching news for: ${keywords.join(', ')}`);
-      
-      let sources: string[] | undefined;
-      
-      if (source) {
-        sources = [source];
-      } else {
-        const allSources = this.getSources();
-        sources = allSources
-          .filter(s => s.enabled)
-          .map(s => s.url);
-      }
-      
-      const settings = this.getSearchSettings();
-      
-      return fetchNewsFromPythonScript({
-        keywords: keywords,
-        sources: sources,
-        includeTwitter: settings.includeTwitter,
-        maxResults: settings.maxResults,
-        validateLinks: settings.validateLinks,
-        currentDateOnly: settings.currentDateOnly,
-        deepScrape: settings.deepScrape,
-        twitterUsers: settings.twitterUsers,
-        pythonExecutable: settings.pythonExecutable
-      });
-    } catch (error) {
-      console.log("Error searching news, using demo data:", error.message);
-      
-      toast.info("Búsqueda usando datos de demostración", {
-        description: "Para búsquedas reales, configure el servidor Python"
-      });
-      
-      // Return demo data instead of throwing error
-      return loadResultsFromCsv();
+    if ((!query || query.trim() === "") && (!additionalKeywords || additionalKeywords.length === 0)) {
+      return this.getNews();
     }
+    
+    const keywords: string[] = [];
+    
+    if (query && query.trim() !== "") {
+      keywords.push(query.trim());
+      this.addToSearchHistory(query.trim());
+    }
+    
+    if (additionalKeywords && additionalKeywords.length > 0) {
+      keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
+    }
+    
+    console.log(`Searching REAL news for: ${keywords.join(', ')}`);
+    
+    let sources: string[] | undefined;
+    
+    if (source) {
+      sources = [source];
+    } else {
+      const allSources = this.getSources();
+      sources = allSources
+        .filter(s => s.enabled)
+        .map(s => s.url);
+    }
+    
+    const settings = this.getSearchSettings();
+    
+    return fetchNewsFromPythonScript({
+      keywords: keywords,
+      sources: sources,
+      includeTwitter: settings.includeTwitter,
+      maxResults: settings.maxResults,
+      validateLinks: settings.validateLinks,
+      currentDateOnly: settings.currentDateOnly,
+      deepScrape: settings.deepScrape,
+      twitterUsers: settings.twitterUsers,
+      pythonExecutable: settings.pythonExecutable
+    });
   }
   
   /**
@@ -425,148 +395,104 @@ class NewsService {
     }
   }
 
-  // Process WhatsApp message for retrieving news
+  // Process WhatsApp message for retrieving news - REAL MODE ONLY
   static async processWhatsAppMessage(message: string): Promise<NewsItem[]> {
-    try {
-      if (!message) return [];
-      
-      message = message.trim().toLowerCase();
-      
-      // Keywords that might indicate what the user wants
-      const keywordMap = {
-        noticias: ['noticias', 'noticia', 'news', 'nuevas', 'recientes'],
-        buscar: ['buscar', 'encontrar', 'busca', 'search', 'query', 'consulta'],
-        sobre: ['sobre', 'acerca', 'de', 'about', 'regarding', 'relacionado'],
-        fuente: ['fuente', 'medio', 'diario', 'periódico', 'source', 'from']
-      };
-      
-      // Detect user intent based on keywords
-      const detectIntent = (msg: string): 'all' | 'search' | 'unknown' => {
-        if (keywordMap.noticias.some(k => msg === k)) {
-          return 'all';
-        }
-        
-        if (keywordMap.noticias.some(k => msg.includes(k)) || 
-            keywordMap.buscar.some(k => msg.includes(k))) {
-          return 'search';
-        }
-        
-        // If the message has more than 3 characters, assume it's a search
-        if (msg.length > 3) {
-          return 'search';
-        }
-        
-        return 'unknown';
-      };
-      
-      // Detect message intent
-      const intent = detectIntent(message);
-      
-      switch(intent) {
-        case 'all':
-          // Return all recent news
-          return this.getNews();
-          
-        case 'search':
-          // Extract query and source if present
-          let query = message;
-          let source = '';
-          
-          // Remove keywords from the start to get the pure query
-          for (const keyword of [...keywordMap.noticias, ...keywordMap.buscar]) {
-            if (query.startsWith(keyword)) {
-              query = query.substring(keyword.length).trim();
-              // Remove special characters like ":" after the keyword
-              query = query.replace(/^[:;,.]+\s*/, '').trim();
-              break;
-            }
-          }
-          
-          // Look for source specification
-          const sourceIndicators = keywordMap.fuente.concat(keywordMap.sobre);
-          for (const indicator of sourceIndicators) {
-            const pattern = new RegExp(`\\s${indicator}\\s+([\\w\\s]+)(?:\\s|$)`, 'i');
-            const match = query.match(pattern);
-            if (match && match[1]) {
-              source = match[1].trim();
-              // Remove the source part from the query
-              query = query.replace(pattern, ' ').trim();
-              break;
-            }
-          }
-          
-          console.log(`Detected intent: search. Query: "${query}", Source: "${source}"`);
-          return this.searchNews(query, source);
-          
-        default:
-          console.log("Intent not recognized, trying direct search:", message);
-          return this.searchNews(message);
+    if (!message) return [];
+    
+    message = message.trim().toLowerCase();
+    
+    // Keywords that might indicate what the user wants
+    const keywordMap = {
+      noticias: ['noticias', 'noticia', 'news', 'nuevas', 'recientes'],
+      buscar: ['buscar', 'encontrar', 'busca', 'search', 'query', 'consulta'],
+      sobre: ['sobre', 'acerca', 'de', 'about', 'regarding', 'relacionado'],
+      fuente: ['fuente', 'medio', 'diario', 'periódico', 'source', 'from']
+    };
+    
+    // Detect user intent based on keywords
+    const detectIntent = (msg: string): 'all' | 'search' | 'unknown' => {
+      if (keywordMap.noticias.some(k => msg === k)) {
+        return 'all';
       }
-    } catch (error) {
-      console.error("Error processing WhatsApp message:", error);
-      return []; // Return empty array on error to prevent filter issues
+      
+      if (keywordMap.noticias.some(k => msg.includes(k)) || 
+          keywordMap.buscar.some(k => msg.includes(k))) {
+        return 'search';
+      }
+      
+      // If the message has more than 3 characters, assume it's a search
+      if (msg.length > 3) {
+        return 'search';
+      }
+      
+      return 'unknown';
+    };
+    
+    // Detect message intent
+    const intent = detectIntent(message);
+    
+    switch(intent) {
+      case 'all':
+        // Return all recent news
+        return this.getNews();
+        
+      case 'search':
+        // Extract query and source if present
+        let query = message;
+        let source = '';
+        
+        // Remove keywords from the start to get the pure query
+        for (const keyword of [...keywordMap.noticias, ...keywordMap.buscar]) {
+          if (query.startsWith(keyword)) {
+            query = query.substring(keyword.length).trim();
+            // Remove special characters like ":" after the keyword
+            query = query.replace(/^[:;,.]+\s*/, '').trim();
+            break;
+          }
+        }
+        
+        // Look for source specification
+        const sourceIndicators = keywordMap.fuente.concat(keywordMap.sobre);
+        for (const indicator of sourceIndicators) {
+          const pattern = new RegExp(`\\s${indicator}\\s+([\\w\\s]+)(?:\\s|$)`, 'i');
+          const match = query.match(pattern);
+          if (match && match[1]) {
+            source = match[1].trim();
+            // Remove the source part from the query
+            query = query.replace(pattern, ' ').trim();
+            break;
+          }
+        }
+        
+        console.log(`Detected intent: search. Query: "${query}", Source: "${source}"`);
+        return this.searchNews(query, source);
+        
+      default:
+        console.log("Intent not recognized, trying direct search:", message);
+        return this.searchNews(message);
     }
   }
 
-  // Make this method async to properly use await
+  /**
+   * Get news from real sources - REAL MODE ONLY
+   */
   static async getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
-    // This function is now replaced by the Python scraper
-    if (USE_PYTHON_SCRAPER) {
-      const settings = this.getSearchSettings();
-      const enabledSources = this.getSources()
-        .filter(source => source.enabled)
-        .map(source => source.url);
-        
-      return fetchNewsFromPythonScript({
-        keywords: keywords || [],
-        sources: enabledSources,
-        includeTwitter: settings.includeTwitter,
-        maxResults: settings.maxResults,
-        validateLinks: settings.validateLinks,
-        currentDateOnly: settings.currentDateOnly,
-        deepScrape: settings.deepScrape,
-        twitterUsers: settings.twitterUsers
-      });
-    }
-    
-    const API_ENDPOINT = '/api';
-    try {
-      // Define search parameters
-      const searchParams = new URLSearchParams();
+    const settings = this.getSearchSettings();
+    const enabledSources = this.getSources()
+      .filter(source => source.enabled)
+      .map(source => source.url);
       
-      if (keywords && Array.isArray(keywords) && keywords.length > 0) {
-        searchParams.append('keywords', keywords.join(','));
-      }
-      
-      // Fetch from the API endpoint
-      const response = await fetch(`${API_ENDPOINT}/news?${searchParams.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!Array.isArray(data)) {
-        throw new Error('Invalid data format');
-      }
-      
-      // Transform the API response to match our NewsItem interface
-      const newsItems: NewsItem[] = data.map((item: any) => ({
-        id: item.id || String(Math.random()),
-        title: item.titulo || item.title || 'Sin título',
-        summary: item.resumen || item.summary || '',
-        date: item.fecha || item.date || new Date().toISOString(),
-        sourceUrl: item.url || '#',
-        sourceName: this.extractSourceNameFromUrl(item.url || '') || 'Fuente desconocida',
-        topics: this.inferTopicsFromText(item.titulo + ' ' + item.summary),
-      }));
-      
-      return newsItems;
-    } catch (error) {
-      console.error('Error fetching news from API:', error);
-      return []; // Return an empty array instead of falling back to mock data
-    }
+    return fetchNewsFromPythonScript({
+      keywords: keywords || [],
+      sources: enabledSources,
+      includeTwitter: settings.includeTwitter,
+      maxResults: settings.maxResults,
+      validateLinks: settings.validateLinks,
+      currentDateOnly: settings.currentDateOnly,
+      deepScrape: settings.deepScrape,
+      twitterUsers: settings.twitterUsers,
+      pythonExecutable: settings.pythonExecutable
+    });
   }
 
   // Extract source name from URL

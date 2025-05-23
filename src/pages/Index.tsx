@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Clock, Download, Terminal } from "lucide-react";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
@@ -99,11 +99,10 @@ const Index = () => {
       });
     } catch (error) {
       console.error("Error loading results from CSV:", error);
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los resultados desde el CSV",
-        variant: "destructive",
+      toast.error("Error", {
+        description: `No se pudieron cargar los resultados: ${error.message}`
       });
+      setNews([]);
     } finally {
       setLoading(false);
     }
@@ -124,7 +123,7 @@ const Index = () => {
       
       // Show initial Python output
       setPythonOutput([
-        "🚀 Iniciando radar de noticias...",
+        "🚀 Iniciando radar de noticias REAL...",
         `🔍 Palabras clave: ${latestSettings.keywords.join(', ')}`,
         "🌐 Buscando en fuentes configuradas..."
       ]);
@@ -138,6 +137,11 @@ const Index = () => {
         deepScrape: true // Enable deep scraping of internal pages
       });
       
+      // Make sure server is running message
+      toast.info("Conectando al servidor Python...", {
+        description: "Asegúrate de que el servidor Python esté ejecutándose en http://localhost:8000"
+      });
+      
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
       // Update the last search time
@@ -148,7 +152,7 @@ const Index = () => {
       
       toast({
         title: "Noticias actualizadas",
-        description: `Se cargaron ${fetchedNews.length} noticias`,
+        description: `Se cargaron ${fetchedNews.length} noticias REALES`,
       });
     } catch (error) {
       console.error("Error fetching news:", error);
@@ -158,13 +162,11 @@ const Index = () => {
       setPythonOutput(prev => [
         ...prev,
         "❌ Error en la búsqueda de noticias",
-        `❌ ${error}`
+        `❌ ${error.message}`
       ]);
       
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las noticias",
-        variant: "destructive",
+      toast.error("Error", {
+        description: `No se pudieron cargar las noticias: ${error.message}`
       });
     } finally {
       // Keep the loading state true until the Python script completes

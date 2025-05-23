@@ -7,17 +7,17 @@ import { toast } from "sonner";
 // Define the API endpoint (this should be configured based on where the Python script is hosted)
 const PYTHON_API_ENDPOINT = '/api/scraper';
 
-// Configuration for the API - UPDATED FOR DEMO MODE
+// Configuration for the API - UPDATED FOR REAL MODE ONLY
 const API_CONFIG = {
-  useLocalMock: true, // CHANGED: Set to true to use demo data when server is unavailable
-  mockPythonExecution: true, // CHANGED: Set to true for demo execution
+  useLocalMock: false, // CHANGED: Always use real server
+  mockPythonExecution: false, // CHANGED: Never mock execution
   mockCsvFilePath: '/data/radar/resultados.csv',
   pythonScriptPath: 'python3',
   scriptPath: 'news_scraper.py',
   useProxy: false,
   proxyUrl: 'http://localhost:8000', // Backend server URL
-  connectionRetries: 2, // REDUCED: Fewer retries for faster fallback
-  retryDelay: 1000, // REDUCED: Less delay between retries
+  connectionRetries: 3, // Increased retries for real server
+  retryDelay: 2000, // Increased delay for real server
 };
 
 /**
@@ -190,10 +190,10 @@ async function fetchWithRetries(url: string, options?: RequestInit, retries = AP
 }
 
 /**
- * Execute the Python script - Updated to handle connection failures gracefully
+ * Execute the Python script - REAL MODE ONLY
  */
 export async function executePythonScript(options: NewsSearchOptions): Promise<PythonScriptExecutionStatus> {
-  console.log("Starting Python script execution with options:", options);
+  console.log("Starting REAL Python script execution with options:", options);
   
   // Reset status
   pythonExecutionStatus.running = true;
@@ -202,12 +202,7 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
   pythonExecutionStatus.error = undefined;
   pythonExecutionStatus.startTime = new Date();
   pythonExecutionStatus.endTime = undefined;
-  pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias..."];
-  
-  // Check if we should use mock data (when server is not available)
-  if (API_CONFIG.useLocalMock || API_CONFIG.mockPythonExecution) {
-    return simulatePythonExecution(options);
-  }
+  pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias REAL..."];
 
   // Build Python script parameters
   const scriptParams: PythonScriptParams = {
@@ -233,7 +228,8 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
       pythonExecutable: scriptParams.pythonExecutable
     };
 
-    console.log("Intentando conectar con servidor Python...");
+    console.log("Conectando con servidor Python REAL...");
+    pythonExecutionStatus.output.push("🔗 Conectando con servidor Python...");
     
     const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/execute`;
     const response = await fetchWithRetries(apiUrl, {
@@ -245,7 +241,7 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
     });
     
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      throw new Error(`API error: ${response.status} - ${response.statusText}`);
     }
     
     const data = await response.json() as PythonScriptExecutionResponse;
@@ -258,54 +254,21 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
       throw new Error(data.error || 'Error desconocido ejecutando el script');
     }
   } catch (error) {
-    console.log("Error conectando con servidor Python, usando datos de demostración:", error.message);
+    console.error("Error conectando con servidor Python:", error);
     
-    // Show informative toast instead of error
-    toast.info("Servidor Python no disponible", {
-      description: "Mostrando datos de demostración. Para usar el servidor real, ejecute: npm start en src/server/"
+    pythonExecutionStatus.running = false;
+    pythonExecutionStatus.completed = false;
+    pythonExecutionStatus.error = `Error de conexión: ${error.message}`;
+    pythonExecutionStatus.endTime = new Date();
+    pythonExecutionStatus.output.push(`❌ Error de conexión: ${error.message}`);
+    pythonExecutionStatus.output.push("🔧 Asegúrese de que el servidor Python esté ejecutándose en http://localhost:8000");
+    
+    toast.error("Error de conexión", {
+      description: "No se pudo conectar al servidor Python. Verifique que esté ejecutándose en localhost:8000"
     });
     
-    // Fallback to mock data
-    return simulatePythonExecution(options);
+    throw error; // Re-throw the error instead of falling back to mock data
   }
-}
-
-/**
- * Simulate Python script execution with mock data
- */
-async function simulatePythonExecution(options: NewsSearchOptions): Promise<PythonScriptExecutionStatus> {
-  return new Promise((resolve) => {
-    pythonExecutionStatus.output.push("📡 Usando datos de demostración...");
-    
-    // Simulate progress
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-      progress += 20;
-      pythonExecutionStatus.progress = progress;
-      
-      if (progress === 20) {
-        pythonExecutionStatus.output.push("🔍 Buscando noticias relevantes...");
-      } else if (progress === 40) {
-        pythonExecutionStatus.output.push("📰 Procesando fuentes de noticias...");
-      } else if (progress === 60) {
-        pythonExecutionStatus.output.push("🔗 Validando enlaces...");
-      } else if (progress === 80) {
-        pythonExecutionStatus.output.push("📝 Generando resúmenes...");
-      } else if (progress >= 100) {
-        clearInterval(progressInterval);
-        
-        pythonExecutionStatus.running = false;
-        pythonExecutionStatus.completed = true;
-        pythonExecutionStatus.progress = 100;
-        pythonExecutionStatus.endTime = new Date();
-        pythonExecutionStatus.csvPath = '/demo/resultados_demo.csv';
-        pythonExecutionStatus.output.push("✅ Proceso completado con datos de demostración");
-        pythonExecutionStatus.output.push(`📄 Archivo CSV: ${pythonExecutionStatus.csvPath}`);
-        
-        resolve(pythonExecutionStatus);
-      }
-    }, 500);
-  });
 }
 
 /**
@@ -402,17 +365,15 @@ export function getPythonExecutionStatus(): PythonScriptExecutionStatus {
 }
 
 /**
- * Load results from CSV file - Updated to handle demo mode
+ * Load results from CSV file - REAL MODE ONLY
  */
 export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> {
+  if (!csvPath) {
+    throw new Error("No se proporcionó ruta del archivo CSV");
+  }
+  
   try {
-    // If in demo mode or no real CSV path, return mock data
-    if (API_CONFIG.useLocalMock || !csvPath || csvPath.includes('demo')) {
-      console.log("Loading demo results...");
-      return transformPythonResponseToNewsItems(mockPythonResponse);
-    }
-    
-    console.log("Loading real results from CSV:", csvPath);
+    console.log("Loading REAL results from CSV:", csvPath);
     
     const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/csv?path=${encodeURIComponent(csvPath)}`;
     const response = await fetchWithRetries(apiUrl);
@@ -424,11 +385,11 @@ export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> 
     const csvContent = await response.text();
     const parsedNews = parseCsvToNewsItems(csvContent);
     
+    console.log(`Loaded ${parsedNews.length} real news items from CSV`);
     return parsedNews;
   } catch (error) {
-    console.log("Error loading CSV, using demo data:", error.message);
-    // Fallback to demo data
-    return transformPythonResponseToNewsItems(mockPythonResponse);
+    console.error("Error loading CSV:", error);
+    throw error; // Re-throw the error instead of falling back to mock data
   }
 }
 
@@ -517,29 +478,22 @@ function cleanCsvValue(value: string): string {
 }
 
 /**
- * Fetch news from the Python script - Updated with better error handling
+ * Fetch news from the Python script - REAL MODE ONLY
  */
 export async function fetchNewsFromPythonScript(options: NewsSearchOptions): Promise<NewsItem[]> {
-  try {
-    console.log("Fetching news from Python script with options:", options);
-    
-    const executionStatus = await executePythonScript(options);
-    
-    if (executionStatus.error) {
-      console.log("Script execution had error, trying demo data:", executionStatus.error);
-      return transformPythonResponseToNewsItems(mockPythonResponse);
-    }
-    
-    if (executionStatus.completed && executionStatus.csvPath) {
-      return loadResultsFromCsv(executionStatus.csvPath);
-    }
-    
-    // If execution is still running, return demo data for now
-    return transformPythonResponseToNewsItems(mockPythonResponse);
-  } catch (error) {
-    console.log("Error fetching news, using demo data:", error.message);
-    return transformPythonResponseToNewsItems(mockPythonResponse);
+  console.log("Fetching REAL news from Python script with options:", options);
+  
+  const executionStatus = await executePythonScript(options);
+  
+  if (executionStatus.error) {
+    throw new Error(`Error ejecutando script: ${executionStatus.error}`);
   }
+  
+  if (executionStatus.completed && executionStatus.csvPath) {
+    return loadResultsFromCsv(executionStatus.csvPath);
+  }
+  
+  throw new Error("Script no completado o sin archivo CSV");
 }
 
 /**
