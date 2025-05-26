@@ -7,17 +7,17 @@ import { toast } from "sonner";
 // Define the API endpoint (this should be configured based on where the Python script is hosted)
 const PYTHON_API_ENDPOINT = '/api/scraper';
 
-// Configuration for the API - UPDATED FOR REAL MODE ONLY
+// Configuration for the API - UPDATED FOR LOCAL SERVER
 const API_CONFIG = {
-  useLocalMock: false, // CHANGED: Always use real server
-  mockPythonExecution: false, // CHANGED: Never mock execution
+  useLocalMock: false,
+  mockPythonExecution: false,
   mockCsvFilePath: '/data/radar/resultados.csv',
   pythonScriptPath: 'python3',
-  scriptPath: 'radar.py.py',
+  scriptPath: 'radar.py',
   useProxy: false,
-  proxyUrl: 'http://localhost:8000', // Backend server URL
-  connectionRetries: 3, // Increased retries for real server
-  retryDelay: 2000, // Increased delay for real server
+  proxyUrl: 'http://localhost:8000', // Local server URL
+  connectionRetries: 3,
+  retryDelay: 2000,
 };
 
 /**
@@ -165,27 +165,38 @@ function generatePythonCommand(params: PythonScriptParams): string {
 }
 
 /**
- * Helper function to get the base URL for API calls - UPDATED FOR REAL SERVER
+ * Helper function to get the base URL for API calls - UPDATED FOR LOCAL SERVER
  */
 function getApiBaseUrl(): string {
-  // For development, use localhost:8000
-  // For production, this should be configured properly
+  // Use localhost:8000 for local development
   return API_CONFIG.proxyUrl;
 }
 
 /**
- * Fetch with retries
+ * Fetch with retries and CORS handling
  */
 async function fetchWithRetries(url: string, options?: RequestInit, retries = API_CONFIG.connectionRetries): Promise<Response> {
+  const fetchOptions = {
+    ...options,
+    mode: 'cors' as RequestMode,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  };
+
   try {
-    const response = await fetch(url, options);
+    console.log(`Attempting to fetch: ${url}`);
+    const response = await fetch(url, fetchOptions);
+    console.log(`Response status: ${response.status}`);
     return response;
   } catch (error) {
+    console.error(`Fetch error: ${error.message}`);
     if (retries <= 0) throw error;
     
     console.log(`Fetch failed, retrying... (${retries} attempts left)`);
     await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay));
-    return fetchWithRetries(url, options, retries - 1);
+    return fetchWithRetries(url, fetchOptions, retries - 1);
   }
 }
 
