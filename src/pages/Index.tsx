@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -97,25 +96,31 @@ const Index = () => {
     setPythonStatus(null);
     setPythonOutput([]);
     try {
+      // Get current settings and update them with UI state
       const currentSettings = NewsService.getSearchSettings();
       const latestSettings = NewsService.getSearchSettings();
       setKeywords(latestSettings.keywords || []);
+      
       setPythonOutput([
         "🚀 Iniciando radar de noticias REAL...",
         `🔍 Palabras clave: ${latestSettings.keywords.join(', ')}`,
         "🌐 Buscando en fuentes configuradas..."
       ]);
+      
+      // Update search settings with current UI state and keywords from KeywordsConfig
       NewsService.updateSearchSettings({
         ...currentSettings,
         includeTwitter: includeTwitter,
-        keywords: latestSettings.keywords || [],
+        keywords: latestSettings.keywords || [], // Use keywords from KeywordsConfig
         currentDateOnly: todayOnly,
         validateLinks: validateLinks,
         deepScrape: true
       });
+      
       toast.info("Conectando al servidor Python...", {
         description: "Servidor Python detectado en http://localhost:8000"
       });
+      
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
       setLastSearchTime(new Date());
@@ -301,12 +306,7 @@ const Index = () => {
                 {safeNews.map((item, idx) => (
                   <NewsCard 
                     key={item.sourceUrl || idx} 
-                    news={{
-                      title: item.title,
-                      description: item.summary,
-                      url: item.sourceUrl,
-                      date: item.date
-                    }} 
+                    news={item}
                   />
                 ))}
               </div>

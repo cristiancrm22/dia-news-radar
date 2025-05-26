@@ -85,13 +85,30 @@ class NewsService {
   static async getNews(): Promise<NewsItem[]> {
     const settings = this.getSearchSettings();
     const enabledSources = this.getSources().filter(source => source.enabled);
+    
+    // If no sources are enabled, show error
+    if (enabledSources.length === 0) {
+      throw new Error("No hay fuentes habilitadas. Por favor habilite al menos una fuente en la configuración.");
+    }
+    
+    // If no keywords are configured, show warning
+    if (!settings.keywords || settings.keywords.length === 0) {
+      console.warn("No hay palabras clave configuradas. Se buscarán todas las noticias.");
+    }
+    
     const sourceUrls = enabledSources.map(source => source.url);
     
-    console.log("Getting REAL news with settings:", settings);
-    console.log("Using enabled sources:", enabledSources.map(s => s.name));
+    console.log("Getting REAL news with settings:", {
+      keywords: settings.keywords,
+      sources: enabledSources.map(s => s.name),
+      includeTwitter: settings.includeTwitter,
+      maxResults: settings.maxResults,
+      validateLinks: settings.validateLinks,
+      currentDateOnly: settings.currentDateOnly
+    });
     
     const scriptStatus = await executePythonScript({
-      keywords: settings.keywords,
+      keywords: settings.keywords || [],
       sources: sourceUrls,
       includeTwitter: settings.includeTwitter,
       maxResults: settings.maxResults,
@@ -105,7 +122,20 @@ class NewsService {
     if (scriptStatus.completed && !scriptStatus.error && scriptStatus.csvPath) {
       const results = await loadResultsFromCsv(scriptStatus.csvPath);
       console.log("Loaded REAL results:", results.length, "news items");
-      return results;
+      
+      // Filter results by keywords if they are configured
+      let filteredResults = results;
+      if (settings.keywords && settings.keywords.length > 0) {
+        filteredResults = results.filter(item => {
+          const searchText = `${item.title} ${item.summary}`.toLowerCase();
+          return settings.keywords.some(keyword => 
+            searchText.includes(keyword.toLowerCase())
+          );
+        });
+        console.log(`Filtered by keywords (${settings.keywords.join(', ')}):`, filteredResults.length, "news items");
+      }
+      
+      return filteredResults;
     } else if (scriptStatus.error) {
       throw new Error(`Error ejecutando script: ${scriptStatus.error}`);
     } else {
@@ -154,9 +184,13 @@ class NewsService {
       sources = [source];
     } else {
       const allSources = this.getSources();
-      sources = allSources
-        .filter(s => s.enabled)
-        .map(s => s.url);
+      const enabledSources = allSources.filter(s => s.enabled);
+      
+      if (enabledSources.length === 0) {
+        throw new Error("No hay fuentes habilitadas. Por favor habilite al menos una fuente en la configuración.");
+      }
+      
+      sources = enabledSources.map(s => s.url);
     }
     
     const settings = this.getSearchSettings();
