@@ -405,7 +405,7 @@ export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> 
 }
 
 /**
- * Parse CSV content to NewsItem array - updated to handle encoding issues and match the exact format
+ * Parse CSV content to NewsItem array - updated to handle both English and Spanish headers
  */
 function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   if (!csvContent) return [];
@@ -417,15 +417,25 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   if (lines.length < 2) return []; // Need at least header + one data row
   
   const headers = lines[0].split(',');
-  const titleIndex = headers.indexOf('titulo');
-  const dateIndex = headers.indexOf('fecha');
-  const urlIndex = headers.indexOf('url');
-  const summaryIndex = headers.indexOf('resumen');
+  console.log("CSV headers found:", headers);
+  
+  // Support both English and Spanish headers
+  let titleIndex = headers.indexOf('titulo');
+  let dateIndex = headers.indexOf('fecha');
+  let urlIndex = headers.indexOf('url');
+  let summaryIndex = headers.indexOf('resumen');
+  
+  // If Spanish headers not found, try English headers
+  if (titleIndex === -1) titleIndex = headers.indexOf('title');
+  if (dateIndex === -1) dateIndex = headers.indexOf('date');
+  if (summaryIndex === -1) summaryIndex = headers.indexOf('description');
   
   if (titleIndex === -1 || dateIndex === -1 || urlIndex === -1 || summaryIndex === -1) {
-    console.error("CSV headers do not match expected format, got:", headers);
+    console.error("CSV headers do not match expected format. Expected: titulo/title, fecha/date, url, resumen/description. Got:", headers);
     return [];
   }
+  
+  console.log("Using header indices:", { titleIndex, dateIndex, urlIndex, summaryIndex });
   
   const newsItems: NewsItem[] = [];
   
@@ -440,6 +450,9 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
     const date = cleanCsvValue(values[dateIndex]);
     const url = cleanCsvValue(values[urlIndex]);
     const summary = decodeEntities(cleanCsvValue(values[summaryIndex]));
+    
+    // Skip rows with empty essential data
+    if (!title || !url) continue;
     
     // Extract source name from URL
     let sourceName = 'Fuente desconocida';
@@ -462,6 +475,7 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
     });
   }
   
+  console.log(`Parsed ${newsItems.length} news items from CSV`);
   return newsItems;
 }
 
