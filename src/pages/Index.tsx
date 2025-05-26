@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,17 +30,6 @@ const Index = () => {
   const [showOutput, setShowOutput] = useState(true);
   const [consoleAutoScroll, setConsoleAutoScroll] = useState(true);
   const [consoleRef, setConsoleRef] = useState<HTMLDivElement | null>(null);
-
-  // Elimina el useEffect que llama a fetchNews al montar
-  // useEffect(() => {
-  //   fetchNews();
-  //   // Load search settings
-  //   const settings = NewsService.getSearchSettings();
-  //   setKeywords(settings.keywords || []);
-  //   setIncludeTwitter(settings.includeTwitter);
-  //   setTodayOnly(settings.currentDateOnly || true);
-  //   setValidateLinks(settings.validateLinks || true);
-  // }, []);
 
   useEffect(() => {
     // Load search settings solo al montar
@@ -87,13 +77,12 @@ const Index = () => {
       const results = await NewsService.loadResultsFromCsv(csvPath);
       setNews(results);
       setLastSearchTime(new Date());
-      toast({
-        title: "Resultados cargados",
+      toast.success("Resultados cargados", {
         description: `Se cargaron ${results.length} noticias desde el archivo CSV`,
       });
     } catch (error) {
       console.error("Error loading results from CSV:", error);
-      toast.error("Error", {
+      toast.error("Error al cargar resultados", {
         description: `No se pudieron cargar los resultados: ${error.message}`
       });
       setNews([]);
@@ -125,14 +114,13 @@ const Index = () => {
         deepScrape: true
       });
       toast.info("Conectando al servidor Python...", {
-        description: "Asegúrate de que el servidor Python esté ejecutándose en http://localhost:8000"
+        description: "Servidor Python detectado en http://localhost:8000"
       });
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
       setLastSearchTime(new Date());
       setSearchProgress(100);
-      toast({
-        title: "Noticias actualizadas",
+      toast.success("Noticias actualizadas", {
         description: `Se cargaron ${fetchedNews.length} noticias REALES`,
       });
     } catch (error) {
@@ -143,7 +131,7 @@ const Index = () => {
         "❌ Error en la búsqueda de noticias",
         `❌ ${error.message}`
       ]);
-      toast.error("Error", {
+      toast.error("Error de conexión", {
         description: `No se pudieron cargar las noticias: ${error.message}`
       });
     } finally {
@@ -157,15 +145,12 @@ const Index = () => {
   const downloadResults = () => {
     if (news && news.length > 0) {
       NewsService.downloadNewsAsCSV(news);
-      toast({
-        title: "Descarga iniciada",
+      toast.success("Descarga iniciada", {
         description: "Se está descargando el archivo resultados.csv"
       });
     } else {
-      toast({
-        title: "Sin resultados",
-        description: "No hay noticias para descargar",
-        variant: "destructive"
+      toast.error("Sin resultados", {
+        description: "No hay noticias para descargar"
       });
     }
   };
@@ -314,7 +299,15 @@ const Index = () => {
             ) : safeNews.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {safeNews.map((item, idx) => (
-                  <NewsCard key={item.url || idx} news={item} />
+                  <NewsCard 
+                    key={item.sourceUrl || idx} 
+                    news={{
+                      title: item.title,
+                      description: item.summary,
+                      url: item.sourceUrl,
+                      date: item.date
+                    }} 
+                  />
                 ))}
               </div>
             ) : (
