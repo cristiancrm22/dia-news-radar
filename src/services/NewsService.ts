@@ -68,7 +68,7 @@ const defaultSearchSettings: SearchSettings = {
   deepScrape: true,  // Enable deep scraping by default
   twitterUsers: defaultTwitterUsers,
   pythonScriptPath: "python3",
-  pythonExecutable: "/usr/bin/python3"
+  pythonExecutable: "python"
 };
 
 // LocalStorage keys

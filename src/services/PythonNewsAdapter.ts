@@ -13,7 +13,7 @@ const API_CONFIG = {
   mockPythonExecution: false, // CHANGED: Never mock execution
   mockCsvFilePath: '/data/radar/resultados.csv',
   pythonScriptPath: 'python3',
-  scriptPath: 'news_scraper.py',
+  scriptPath: 'radar.py.py',
   useProxy: false,
   proxyUrl: 'http://localhost:8000', // Backend server URL
   connectionRetries: 3, // Increased retries for real server

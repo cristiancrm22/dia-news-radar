@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const { spawn } = require('child_process');
@@ -12,7 +11,8 @@ const PORT = 8000;
 app.use(cors());
 app.use(express.json());
 
-// Store running processes
+// Store running processescd d:\senado\radar_noticias_lovable\dia-news-radar\src\server
+
 const runningProcesses = new Map();
 
 // Endpoint to execute Python script
@@ -54,14 +54,15 @@ app.post('/api/scraper/execute', (req, res) => {
     }
     
     // Execute the Python script
-    const pythonCommand = pythonExecutable || 'python3';
-    const scriptPath = './news_scraper.py'; // Adjust path as needed
+    const pythonCommand = 'python'; // Fuerza el uso de python en Windows
+    const scriptPath = path.join(__dirname, 'radar.py');
     
     console.log(`Executing: ${pythonCommand} ${scriptPath} ${args.join(' ')}`);
     
     const process = spawn(pythonCommand, [scriptPath, ...args], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
+    console.log('Spawned process PID:', process.pid);
     
     const processInfo = {
       pid: process.pid,
@@ -126,7 +127,7 @@ app.post('/api/scraper/execute', (req, res) => {
 // Endpoint to check script status
 app.get('/api/scraper/status', (req, res) => {
   const { pid } = req.query;
-  
+  console.log('Status check for PID:', pid);
   if (pid && runningProcesses.has(parseInt(pid))) {
     const processInfo = runningProcesses.get(parseInt(pid));
     res.json(processInfo);
@@ -171,6 +172,11 @@ app.get('/api/scraper/csv', (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Endpoint de compatibilidad para /status
+app.get('/status', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

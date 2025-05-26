@@ -30,11 +30,19 @@ const Index = () => {
   const [consoleAutoScroll, setConsoleAutoScroll] = useState(true);
   const [consoleRef, setConsoleRef] = useState<HTMLDivElement | null>(null);
 
+  // Elimina el useEffect que llama a fetchNews al montar
+  // useEffect(() => {
+  //   fetchNews();
+  //   // Load search settings
+  //   const settings = NewsService.getSearchSettings();
+  //   setKeywords(settings.keywords || []);
+  //   setIncludeTwitter(settings.includeTwitter);
+  //   setTodayOnly(settings.currentDateOnly || true);
+  //   setValidateLinks(settings.validateLinks || true);
+  // }, []);
+
   useEffect(() => {
-    // Fetch news on component mount
-    fetchNews();
-    
-    // Load search settings
+    // Load search settings solo al montar
     const settings = NewsService.getSearchSettings();
     setKeywords(settings.keywords || []);
     setIncludeTwitter(settings.includeTwitter);
@@ -43,47 +51,34 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    // This effect will run when the selected tab changes to "noticias"
-    // to refresh the news with the latest keywords
     if (selectedTab === "noticias") {
-      // Load the latest keywords
       const settings = NewsService.getSearchSettings();
       setKeywords(settings.keywords || []);
     }
   }, [selectedTab]);
-  
-  // Auto-scroll the console output when new lines are added
+
   useEffect(() => {
     if (consoleAutoScroll && consoleRef) {
       consoleRef.scrollTop = consoleRef.scrollHeight;
     }
   }, [pythonOutput, consoleAutoScroll, consoleRef]);
-  
-  // Set up interval to check Python script status when script is running
+
   useEffect(() => {
     if (!loading) return;
-    
     const interval = setInterval(() => {
       const status = NewsService.getPythonScriptStatus();
       setPythonStatus(status);
       setSearchProgress(status.progress);
-      
-      // Update terminal output
       if (status.output && status.output.length > 0) {
         setPythonOutput(status.output);
       }
-      
-      // If script completed or encountered an error, clear interval
       if (status.completed || status.error) {
         clearInterval(interval);
-        
-        // If completed successfully, load results
         if (status.completed && !status.error && status.csvPath) {
           loadResultsFromCsv(status.csvPath);
         }
       }
     }, 1000);
-    
     return () => clearInterval(interval);
   }, [loading]);
 
@@ -92,7 +87,6 @@ const Index = () => {
       const results = await NewsService.loadResultsFromCsv(csvPath);
       setNews(results);
       setLastSearchTime(new Date());
-      
       toast({
         title: "Resultados cargados",
         description: `Se cargaron ${results.length} noticias desde el archivo CSV`,
@@ -113,43 +107,30 @@ const Index = () => {
     setSearchProgress(0);
     setPythonStatus(null);
     setPythonOutput([]);
-    
     try {
-      // Update search settings with the current keywords
       const currentSettings = NewsService.getSearchSettings();
-      // Re-fetch latest keywords in case they were updated in the keywords tab
       const latestSettings = NewsService.getSearchSettings();
       setKeywords(latestSettings.keywords || []);
-      
-      // Show initial Python output
       setPythonOutput([
         "🚀 Iniciando radar de noticias REAL...",
         `🔍 Palabras clave: ${latestSettings.keywords.join(', ')}`,
         "🌐 Buscando en fuentes configuradas..."
       ]);
-      
       NewsService.updateSearchSettings({
         ...currentSettings,
         includeTwitter: includeTwitter,
         keywords: latestSettings.keywords || [],
         currentDateOnly: todayOnly,
         validateLinks: validateLinks,
-        deepScrape: true // Enable deep scraping of internal pages
+        deepScrape: true
       });
-      
-      // Make sure server is running message
       toast.info("Conectando al servidor Python...", {
         description: "Asegúrate de que el servidor Python esté ejecutándose en http://localhost:8000"
       });
-      
       const fetchedNews = await NewsService.getNews();
       setNews(Array.isArray(fetchedNews) ? fetchedNews : []);
-      // Update the last search time
       setLastSearchTime(new Date());
-      
-      // Complete the progress bar
       setSearchProgress(100);
-      
       toast({
         title: "Noticias actualizadas",
         description: `Se cargaron ${fetchedNews.length} noticias REALES`,
@@ -157,27 +138,22 @@ const Index = () => {
     } catch (error) {
       console.error("Error fetching news:", error);
       setNews([]);
-      
-      // Add error to Python output
       setPythonOutput(prev => [
         ...prev,
         "❌ Error en la búsqueda de noticias",
         `❌ ${error.message}`
       ]);
-      
       toast.error("Error", {
         description: `No se pudieron cargar las noticias: ${error.message}`
       });
     } finally {
-      // Keep the loading state true until the Python script completes
       const status = NewsService.getPythonScriptStatus();
       if (!status.running) {
         setLoading(false);
       }
     }
   };
-  
-  // Function to download results as CSV
+
   const downloadResults = () => {
     if (news && news.length > 0) {
       NewsService.downloadNewsAsCSV(news);
@@ -194,43 +170,33 @@ const Index = () => {
     }
   };
 
-  // Aseguramos que news siempre es un array para evitar errores
   const safeNews = Array.isArray(news) ? news : [];
 
-  // Format the last search time
   const formatLastSearchTime = () => {
     if (!lastSearchTime) return "Nunca";
     return format(lastSearchTime, "dd/MM/yyyy HH:mm:ss", { locale: es });
   };
 
-  // Format Python script execution time
   const getPythonScriptInfo = () => {
     if (!pythonStatus) return null;
-    
     if (pythonStatus.running) {
       return "Ejecutando script de Python...";
     }
-    
     if (pythonStatus.error) {
       return `Error: ${pythonStatus.error}`;
     }
-    
     if (pythonStatus.completed) {
       const startTime = pythonStatus.startTime ? new Date(pythonStatus.startTime) : null;
       const endTime = pythonStatus.endTime ? new Date(pythonStatus.endTime) : null;
-      
       if (startTime && endTime) {
         const duration = (endTime.getTime() - startTime.getTime()) / 1000;
         return `Script completado en ${duration.toFixed(1)} segundos`;
       }
-      
       return "Script completado";
     }
-    
     return null;
   };
 
-  // Toggle Python output display
   const togglePythonOutput = () => {
     setShowOutput(!showOutput);
   };
@@ -281,7 +247,6 @@ const Index = () => {
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     Actualizar
                   </Button>
-                  
                   <Button 
                     variant="outline" 
                     className="flex gap-2"
@@ -290,7 +255,6 @@ const Index = () => {
                     <Terminal className="h-4 w-4" />
                     {showOutput ? "Ocultar salida" : "Ver salida"}
                   </Button>
-                  
                   <Button
                     variant="outline"
                     className="flex gap-2"
@@ -302,8 +266,6 @@ const Index = () => {
                   </Button>
                 </div>
               </div>
-              
-              {/* Progress bar that shows during search */}
               {loading && searchProgress > 0 && (
                 <div className="mt-4">
                   <p className="text-sm text-gray-500 mb-1">
@@ -317,8 +279,6 @@ const Index = () => {
                   <Progress value={searchProgress} className="h-2" />
                 </div>
               )}
-              
-              {/* Python script output console */}
               {showOutput && pythonOutput.length > 0 && (
                 <div className="mt-4">
                   <div 
@@ -345,7 +305,6 @@ const Index = () => {
                 </div>
               )}
             </div>
-
             {loading && searchProgress < 100 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -354,8 +313,8 @@ const Index = () => {
               </div>
             ) : safeNews.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {safeNews.map((item) => (
-                  <NewsCard key={item.id} news={item} />
+                {safeNews.map((item, idx) => (
+                  <NewsCard key={item.url || idx} news={item} />
                 ))}
               </div>
             ) : (

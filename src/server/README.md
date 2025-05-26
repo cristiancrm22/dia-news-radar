@@ -25,7 +25,7 @@ El servidor se ejecutará en el puerto 8000.
 
 ## Configuración del script de Python
 
-1. Asegúrate de que el script `news_scraper.py` esté en el mismo directorio que este servidor
+1. Asegúrate de que el script `radar.py.py` esté en el mismo directorio que este servidor
 2. Instala las dependencias de Python necesarias:
 ```bash
 pip install requests beautifulsoup4 newspaper3k snscrape concurrent.futures

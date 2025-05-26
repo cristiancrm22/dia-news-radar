@@ -1,18 +1,13 @@
-
 {
   "name": "python-executor-server",
   "version": "1.0.0",
   "description": "Backend server to execute Python news scraper",
   "main": "python-executor.js",
   "scripts": {
-    "start": "node python-executor.js",
-    "dev": "nodemon python-executor.js"
+    "start": "node python-executor.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
   }
 }
