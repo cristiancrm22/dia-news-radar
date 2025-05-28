@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Clock, Download, Terminal } from "lucide-react";
+import { RefreshCw, Clock, Download, Terminal, User, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/hooks/useAuth";
 import NewsCard from "@/components/NewsCard";
 import SourcesConfig from "@/components/SourcesConfig";
 import WhatsAppConfig from "@/components/WhatsAppConfig";
@@ -15,6 +16,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 
 const Index = () => {
+  const { user, signOut } = useAuth();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
@@ -31,18 +33,42 @@ const Index = () => {
   const [consoleRef, setConsoleRef] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // Load search settings solo al montar
-    const settings = NewsService.getSearchSettings();
-    setKeywords(settings.keywords || []);
-    setIncludeTwitter(settings.includeTwitter);
-    setTodayOnly(settings.currentDateOnly || true);
-    setValidateLinks(settings.validateLinks || true);
-  }, []);
+    // Initialize NewsService with user ID when user changes
+    if (user?.id) {
+      NewsService.setUserId(user.id);
+    } else {
+      NewsService.setUserId(null);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // Load search settings
+    const loadSettings = async () => {
+      try {
+        const settings = await NewsService.getSearchSettings();
+        setKeywords(settings.keywords || []);
+        setIncludeTwitter(settings.includeTwitter);
+        setTodayOnly(settings.currentDateOnly || true);
+        setValidateLinks(settings.validateLinks || true);
+      } catch (error) {
+        console.error("Error loading settings:", error);
+      }
+    };
+    
+    loadSettings();
+  }, [user]);
 
   useEffect(() => {
     if (selectedTab === "noticias") {
-      const settings = NewsService.getSearchSettings();
-      setKeywords(settings.keywords || []);
+      const loadKeywords = async () => {
+        try {
+          const settings = await NewsService.getSearchSettings();
+          setKeywords(settings.keywords || []);
+        } catch (error) {
+          console.error("Error loading keywords:", error);
+        }
+      };
+      loadKeywords();
     }
   }, [selectedTab]);
 
@@ -97,8 +123,8 @@ const Index = () => {
     setPythonOutput([]);
     try {
       // Get current settings and update them with UI state
-      const currentSettings = NewsService.getSearchSettings();
-      const latestSettings = NewsService.getSearchSettings();
+      const currentSettings = await NewsService.getSearchSettings();
+      const latestSettings = await NewsService.getSearchSettings();
       setKeywords(latestSettings.keywords || []);
       
       setPythonOutput([
@@ -108,7 +134,7 @@ const Index = () => {
       ]);
       
       // Update search settings with current UI state and keywords from KeywordsConfig
-      NewsService.updateSearchSettings({
+      await NewsService.updateSearchSettings({
         ...currentSettings,
         includeTwitter: includeTwitter,
         keywords: latestSettings.keywords || [], // Use keywords from KeywordsConfig
@@ -160,6 +186,16 @@ const Index = () => {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success("Sesión cerrada exitosamente");
+    } catch (error) {
+      console.error("Error signing out:", error);
+      toast.error("Error al cerrar sesión");
+    }
+  };
+
   const safeNews = Array.isArray(news) ? news : [];
 
   const formatLastSearchTime = () => {
@@ -194,12 +230,26 @@ const Index = () => {
   return (
     <div className="container mx-auto px-4 py-8">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gradient bg-gradient-to-r from-blue-600 to-blue-900 bg-clip-text text-transparent">
-          Radar de Noticias
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Monitoreo de noticias en tiempo real de las fuentes más importantes
-        </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gradient bg-gradient-to-r from-blue-600 to-blue-900 bg-clip-text text-transparent">
+              Radar de Noticias
+            </h1>
+            <p className="text-gray-600 mt-2">
+              Monitoreo de noticias en tiempo real de las fuentes más importantes
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <User className="h-4 w-4" />
+              <span>{user?.email}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Cerrar Sesión
+            </Button>
+          </div>
+        </div>
       </header>
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">

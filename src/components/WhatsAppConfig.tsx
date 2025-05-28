@@ -1,4 +1,3 @@
-
 // Corrigiendo el error TS2322
 // Asegurarse de usar los tipos correctos para connectionMethod
 import { useState, useEffect } from "react";
@@ -27,9 +26,17 @@ const WhatsAppConfig = () => {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    // Load config on component mount
-    const savedConfig = NewsService.getWhatsAppConfig();
-    setConfig(savedConfig);
+    // Load config with proper async handling
+    const loadConfig = async () => {
+      try {
+        const savedConfig = await NewsService.getWhatsAppConfig();
+        setConfig(savedConfig);
+      } catch (error) {
+        console.error("Error loading WhatsApp config:", error);
+      }
+    };
+    
+    loadConfig();
   }, []);
 
   const handleEnabledChange = (enabled: boolean) => {

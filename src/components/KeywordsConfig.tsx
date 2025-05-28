@@ -4,98 +4,106 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { X, Plus, Search } from "lucide-react";
+import { X, Plus } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import NewsService from "@/services/NewsService";
+import { DatabaseService } from "@/services/DatabaseService";
+import { useAuth } from "@/hooks/useAuth";
 
 const KeywordsConfig = () => {
+  const { user } = useAuth();
   const [keywords, setKeywords] = useState<string[]>([]);
   const [newKeyword, setNewKeyword] = useState("");
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    // Load keywords and search history from settings
-    const settings = NewsService.getSearchSettings();
-    setKeywords(settings.keywords || []);
-    setSearchHistory(settings.searchHistory || []);
-  }, []);
+    if (!user) return;
+    
+    const loadKeywords = async () => {
+      try {
+        setLoading(true);
+        const userKeywords = await DatabaseService.getUserKeywords();
+        setKeywords(userKeywords);
+      } catch (error) {
+        console.error("Error loading keywords:", error);
+        toast({
+          title: "Error",
+          description: "Error al cargar las palabras clave",
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadKeywords();
+  }, [user]);
 
-  const addKeyword = () => {
-    if (newKeyword.trim() && !keywords.includes(newKeyword.trim())) {
-      const updatedKeywords = [...keywords, newKeyword.trim()];
-      setKeywords(updatedKeywords);
+  const addKeyword = async () => {
+    if (!newKeyword.trim() || keywords.includes(newKeyword.trim()) || isSubmitting) {
+      return;
+    }
+
+    const newKeywordTrimmed = newKeyword.trim();
+    
+    try {
+      setIsSubmitting(true);
+      await DatabaseService.addUserKeyword(newKeywordTrimmed);
+      
+      setKeywords(prev => [...prev, newKeywordTrimmed]);
       setNewKeyword("");
       
-      // Update search settings
-      const currentSettings = NewsService.getSearchSettings();
-      NewsService.updateSearchSettings({
-        ...currentSettings,
-        keywords: updatedKeywords
-      });
-      
       toast({
         title: "Palabra clave agregada",
-        description: `Se agregó "${newKeyword.trim()}" a las palabras clave de monitoreo.`,
+        description: `Se agregó "${newKeywordTrimmed}" a las palabras clave de monitoreo.`,
+      });
+    } catch (error) {
+      console.error("Error adding keyword:", error);
+      toast({
+        title: "Error",
+        description: "Error al agregar la palabra clave",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const removeKeyword = async (keywordToRemove: string) => {
+    try {
+      await DatabaseService.removeUserKeyword(keywordToRemove);
+      
+      setKeywords(prev => prev.filter(k => k !== keywordToRemove));
+      
+      toast({
+        title: "Palabra clave eliminada",
+        description: `Se eliminó "${keywordToRemove}" de las palabras clave de monitoreo.`,
+      });
+    } catch (error) {
+      console.error("Error removing keyword:", error);
+      toast({
+        title: "Error",
+        description: "Error al eliminar la palabra clave",
+        variant: "destructive"
       });
     }
   };
 
-  const removeKeyword = (keyword: string) => {
-    const updatedKeywords = keywords.filter(k => k !== keyword);
-    setKeywords(updatedKeywords);
-    
-    // Update search settings
-    const currentSettings = NewsService.getSearchSettings();
-    NewsService.updateSearchSettings({
-      ...currentSettings,
-      keywords: updatedKeywords
-    });
-    
-    toast({
-      title: "Palabra clave eliminada",
-      description: `Se eliminó "${keyword}" de las palabras clave de monitoreo.`,
-    });
-  };
-  
-  const useHistoryTerm = (term: string) => {
-    if (!keywords.includes(term)) {
-      const updatedKeywords = [...keywords, term];
-      setKeywords(updatedKeywords);
-      
-      // Update search settings
-      const currentSettings = NewsService.getSearchSettings();
-      NewsService.updateSearchSettings({
-        ...currentSettings,
-        keywords: updatedKeywords
-      });
-      
-      toast({
-        title: "Palabra clave agregada",
-        description: `Se agregó "${term}" del historial a las palabras clave de monitoreo.`,
-      });
-    } else {
-      toast({
-        title: "Palabra clave duplicada",
-        description: `"${term}" ya está en la lista de palabras clave de monitoreo.`,
-      });
-    }
-  };
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <p className="text-gray-500">Debes iniciar sesión para gestionar las palabras clave.</p>
+      </div>
+    );
+  }
 
-  const clearHistory = () => {
-    // Update search settings
-    const currentSettings = NewsService.getSearchSettings();
-    NewsService.updateSearchSettings({
-      ...currentSettings,
-      searchHistory: []
-    });
-    
-    setSearchHistory([]);
-    
-    toast({
-      title: "Historial limpiado",
-      description: "Se ha borrado el historial de búsquedas.",
-    });
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -140,45 +148,20 @@ const KeywordsConfig = () => {
                     addKeyword();
                   }
                 }}
+                disabled={isSubmitting}
               />
-              <Button onClick={addKeyword} variant="default">
+              <Button 
+                onClick={addKeyword} 
+                variant="default" 
+                disabled={!newKeyword.trim() || keywords.includes(newKeyword.trim()) || isSubmitting}
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Agregar
+                {isSubmitting ? "Agregando..." : "Agregar"}
               </Button>
             </div>
           </div>
         </div>
       </div>
-      
-      {searchHistory.length > 0 && (
-        <div className="border rounded-lg p-6 bg-card">
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <Label>Historial de búsquedas</Label>
-              <Button variant="outline" size="sm" onClick={clearHistory}>
-                Limpiar historial
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {searchHistory.map((term, index) => (
-                <Badge 
-                  key={index} 
-                  variant="outline" 
-                  className="cursor-pointer hover:bg-secondary flex items-center"
-                >
-                  <span className="mr-1">{term}</span>
-                  <button 
-                    className="hover:bg-gray-200 rounded-full p-1"
-                    onClick={() => useHistoryTerm(term)}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -6,6 +6,7 @@ import PythonNewsAdapter, {
   getPythonExecutionStatus, 
   loadResultsFromCsv 
 } from './PythonNewsAdapter';
+import { DatabaseService } from './DatabaseService';
 import { toast } from "sonner";
 
 // Configuration - REAL MODE ONLY
@@ -13,7 +14,7 @@ const USE_MOCK_DATA = false;
 const USE_PYTHON_SCRAPER = true;
 const FALLBACK_TO_MOCK = false; // DISABLED: No fallback to demo data
 
-// Default sources
+// Default sources (used as fallback when not authenticated)
 const defaultSources: NewsSource[] = [
   { id: "1", name: "Clarín", url: "https://www.clarin.com", enabled: true },
   { id: "2", name: "La Nación", url: "https://www.lanacion.com.ar", enabled: true },
@@ -54,7 +55,12 @@ const defaultEmailConfig: EmailConfig = {
   email: "",
   frequency: "daily",
   time: "08:00",
-  keywords: []
+  keywords: [],
+  smtpHost: "smtp.gmail.com",
+  smtpPort: 587,
+  smtpUsername: "",
+  smtpPassword: "",
+  useTLS: true
 };
 
 // Default search settings
@@ -65,13 +71,13 @@ const defaultSearchSettings: SearchSettings = {
   validateLinks: true,
   currentDateOnly: true,
   searchHistory: [],
-  deepScrape: true,  // Enable deep scraping by default
+  deepScrape: true,
   twitterUsers: defaultTwitterUsers,
   pythonScriptPath: "python3",
   pythonExecutable: "python"
 };
 
-// LocalStorage keys
+// LocalStorage keys (fallback when not authenticated)
 const SOURCES_KEY = 'news_radar_sources';
 const WHATSAPP_CONFIG_KEY = 'news_radar_whatsapp_config';
 const EMAIL_CONFIG_KEY = 'news_radar_email_config';
@@ -79,12 +85,18 @@ const SEARCH_SETTINGS_KEY = 'news_radar_search_settings';
 const TWITTER_USERS_KEY = 'news_radar_twitter_users';
 
 class NewsService {
+  private static currentUserId: string | null = null;
+
+  static setUserId(userId: string | null) {
+    this.currentUserId = userId;
+  }
+
   /**
    * Get news using Python script execution - REAL MODE ONLY
    */
   static async getNews(): Promise<NewsItem[]> {
-    const settings = this.getSearchSettings();
-    const enabledSources = this.getSources().filter(source => source.enabled);
+    const settings = await this.getSearchSettings();
+    const enabledSources = await this.getSources().then(sources => sources.filter(source => source.enabled));
     
     // If no sources are enabled, show error
     if (enabledSources.length === 0) {
@@ -158,57 +170,6 @@ class NewsService {
   }
 
   /**
-   * Search for news with specific query or keywords - REAL MODE ONLY
-   */
-  static async searchNews(query: string, source?: string, additionalKeywords?: string[]): Promise<NewsItem[]> {
-    if ((!query || query.trim() === "") && (!additionalKeywords || additionalKeywords.length === 0)) {
-      return this.getNews();
-    }
-    
-    const keywords: string[] = [];
-    
-    if (query && query.trim() !== "") {
-      keywords.push(query.trim());
-      this.addToSearchHistory(query.trim());
-    }
-    
-    if (additionalKeywords && additionalKeywords.length > 0) {
-      keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
-    }
-    
-    console.log(`Searching REAL news for: ${keywords.join(', ')}`);
-    
-    let sources: string[] | undefined;
-    
-    if (source) {
-      sources = [source];
-    } else {
-      const allSources = this.getSources();
-      const enabledSources = allSources.filter(s => s.enabled);
-      
-      if (enabledSources.length === 0) {
-        throw new Error("No hay fuentes habilitadas. Por favor habilite al menos una fuente en la configuración.");
-      }
-      
-      sources = enabledSources.map(s => s.url);
-    }
-    
-    const settings = this.getSearchSettings();
-    
-    return fetchNewsFromPythonScript({
-      keywords: keywords,
-      sources: sources,
-      includeTwitter: settings.includeTwitter,
-      maxResults: settings.maxResults,
-      validateLinks: settings.validateLinks,
-      currentDateOnly: settings.currentDateOnly,
-      deepScrape: settings.deepScrape,
-      twitterUsers: settings.twitterUsers,
-      pythonExecutable: settings.pythonExecutable
-    });
-  }
-  
-  /**
    * Export current news results as CSV and trigger download
    */
   static downloadNewsAsCSV(news: NewsItem[]): void {
@@ -218,179 +179,342 @@ class NewsService {
       console.error("Error downloading CSV:", error);
     }
   }
-  
-  /**
-   * Add a search term to the search history
-   */
-  static addToSearchHistory(term: string): void {
-    try {
-      const settings = this.getSearchSettings();
-      const history = settings.searchHistory || [];
-      
-      // Only add if it doesn't already exist
-      if (!history.includes(term)) {
-        // Add to beginning of array (most recent first)
-        const newHistory = [term, ...history.slice(0, 19)]; // Keep last 20 items
-        
-        this.updateSearchSettings({
-          ...settings,
-          searchHistory: newHistory
-        });
-      }
-    } catch (error) {
-      console.error("Error adding to search history:", error);
-    }
-  }
 
-  // Get sources from localStorage or defaults
-  static getSources(): NewsSource[] {
+  // Get sources from database or localStorage
+  static async getSources(): Promise<NewsSource[]> {
     try {
-      const savedSources = localStorage.getItem(SOURCES_KEY);
-      return savedSources ? JSON.parse(savedSources) : defaultSources;
+      if (this.currentUserId) {
+        return await DatabaseService.getUserSources(this.currentUserId);
+      } else {
+        const savedSources = localStorage.getItem(SOURCES_KEY);
+        return savedSources ? JSON.parse(savedSources) : defaultSources;
+      }
     } catch (error) {
       console.error("Error loading sources:", error);
       return defaultSources;
     }
   }
 
-  // Update sources in localStorage
-  static updateSources(sources: NewsSource[]): void {
-    localStorage.setItem(SOURCES_KEY, JSON.stringify(sources));
+  // Update sources in database or localStorage
+  static async updateSources(sources: NewsSource[]): Promise<void> {
+    try {
+      if (this.currentUserId) {
+        await DatabaseService.updateUserSources(sources, this.currentUserId);
+      } else {
+        localStorage.setItem(SOURCES_KEY, JSON.stringify(sources));
+      }
+    } catch (error) {
+      console.error("Error updating sources:", error);
+      throw error;
+    }
   }
 
-  // Get Twitter users from localStorage or defaults
-  static getTwitterUsers(): string[] {
+  // Get Twitter users from database or localStorage
+  static async getTwitterUsers(): Promise<string[]> {
     try {
-      const savedUsers = localStorage.getItem(TWITTER_USERS_KEY);
-      return savedUsers ? JSON.parse(savedUsers) : defaultTwitterUsers;
+      if (this.currentUserId) {
+        return await DatabaseService.getUserTwitterUsers(this.currentUserId);
+      } else {
+        const savedUsers = localStorage.getItem(TWITTER_USERS_KEY);
+        return savedUsers ? JSON.parse(savedUsers) : defaultTwitterUsers;
+      }
     } catch (error) {
       console.error("Error loading Twitter users:", error);
       return defaultTwitterUsers;
     }
   }
 
-  // Update Twitter users in localStorage
-  static updateTwitterUsers(users: string[]): void {
-    localStorage.setItem(TWITTER_USERS_KEY, JSON.stringify(users));
-    
-    // Also update in search settings
-    const currentSettings = this.getSearchSettings();
-    this.updateSearchSettings({
-      ...currentSettings,
-      twitterUsers: users
-    });
+  // Update Twitter users in database or localStorage
+  static async updateTwitterUsers(users: string[]): Promise<void> {
+    try {
+      if (this.currentUserId) {
+        await DatabaseService.updateUserTwitterUsers(users, this.currentUserId);
+      } else {
+        localStorage.setItem(TWITTER_USERS_KEY, JSON.stringify(users));
+      }
+      
+      // Also update in search settings
+      const currentSettings = await this.getSearchSettings();
+      await this.updateSearchSettings({
+        ...currentSettings,
+        twitterUsers: users
+      });
+    } catch (error) {
+      console.error("Error updating Twitter users:", error);
+      throw error;
+    }
   }
 
-  // Get WhatsApp config from localStorage or defaults
-  static getWhatsAppConfig(): WhatsAppConfig {
+  // Get WhatsApp config from database or localStorage
+  static async getWhatsAppConfig(): Promise<WhatsAppConfig> {
     try {
-      const savedConfig = localStorage.getItem(WHATSAPP_CONFIG_KEY);
-      // Handle case where saved config doesn't have the new connectionMethod field
-      if (savedConfig) {
-        const parsedConfig = JSON.parse(savedConfig);
-        if (!parsedConfig.connectionMethod) {
-          parsedConfig.connectionMethod = "official";
+      if (this.currentUserId) {
+        return await DatabaseService.getUserWhatsAppConfig(this.currentUserId);
+      } else {
+        const savedConfig = localStorage.getItem(WHATSAPP_CONFIG_KEY);
+        if (savedConfig) {
+          const parsedConfig = JSON.parse(savedConfig);
+          if (!parsedConfig.connectionMethod) {
+            parsedConfig.connectionMethod = "official";
+          }
+          return parsedConfig;
         }
-        return parsedConfig;
+        return defaultWhatsAppConfig;
       }
-      return defaultWhatsAppConfig;
     } catch (error) {
       console.error("Error loading WhatsApp config:", error);
       return defaultWhatsAppConfig;
     }
   }
 
-  // Update WhatsApp config in localStorage
-  static updateWhatsAppConfig(config: WhatsAppConfig): void {
-    localStorage.setItem(WHATSAPP_CONFIG_KEY, JSON.stringify(config));
+  // Update WhatsApp config in database or localStorage
+  static async updateWhatsAppConfig(config: WhatsAppConfig): Promise<void> {
+    try {
+      if (this.currentUserId) {
+        await DatabaseService.updateUserWhatsAppConfig(config, this.currentUserId);
+      } else {
+        localStorage.setItem(WHATSAPP_CONFIG_KEY, JSON.stringify(config));
+      }
+    } catch (error) {
+      console.error("Error updating WhatsApp config:", error);
+      throw error;
+    }
   }
 
-  // Get Email config from localStorage or defaults
-  static getEmailConfig(): EmailConfig {
+  // Get Email config from database or localStorage
+  static async getEmailConfig(): Promise<EmailConfig> {
     try {
-      const savedConfig = localStorage.getItem(EMAIL_CONFIG_KEY);
-      return savedConfig ? JSON.parse(savedConfig) : defaultEmailConfig;
+      if (this.currentUserId) {
+        const dbConfig = await DatabaseService.getUserEmailConfig(this.currentUserId);
+        // Merge with local storage for SMTP settings since they're not in DB yet
+        const savedConfig = localStorage.getItem(EMAIL_CONFIG_KEY);
+        const localConfig = savedConfig ? JSON.parse(savedConfig) : {};
+        
+        return {
+          ...defaultEmailConfig,
+          ...localConfig,
+          ...dbConfig
+        };
+      } else {
+        const savedConfig = localStorage.getItem(EMAIL_CONFIG_KEY);
+        return savedConfig ? { ...defaultEmailConfig, ...JSON.parse(savedConfig) } : defaultEmailConfig;
+      }
     } catch (error) {
       console.error("Error loading email config:", error);
       return defaultEmailConfig;
     }
   }
 
-  // Update Email config in localStorage
-  static updateEmailConfig(config: EmailConfig): void {
-    localStorage.setItem(EMAIL_CONFIG_KEY, JSON.stringify(config));
+  // Update Email config in database or localStorage
+  static async updateEmailConfig(config: EmailConfig): Promise<void> {
+    try {
+      if (this.currentUserId) {
+        // Save basic config to database
+        await DatabaseService.updateUserEmailConfig(config, this.currentUserId);
+        // Save SMTP settings to localStorage (for now, until we add them to DB)
+        localStorage.setItem(EMAIL_CONFIG_KEY, JSON.stringify(config));
+      } else {
+        localStorage.setItem(EMAIL_CONFIG_KEY, JSON.stringify(config));
+      }
+    } catch (error) {
+      console.error("Error updating email config:", error);
+      throw error;
+    }
   }
 
-  // Get search settings from localStorage or defaults
-  static getSearchSettings(): SearchSettings {
+  // Get search settings from database or localStorage
+  static async getSearchSettings(): Promise<SearchSettings> {
     try {
-      const savedSettings = localStorage.getItem(SEARCH_SETTINGS_KEY);
-      const settings = savedSettings ? JSON.parse(savedSettings) : defaultSearchSettings;
-      
-      // Ensure twitterUsers is included (for backwards compatibility)
-      if (!settings.twitterUsers) {
-        settings.twitterUsers = defaultTwitterUsers;
+      if (this.currentUserId) {
+        return await DatabaseService.getUserSearchSettings(this.currentUserId);
+      } else {
+        const savedSettings = localStorage.getItem(SEARCH_SETTINGS_KEY);
+        const settings = savedSettings ? JSON.parse(savedSettings) : defaultSearchSettings;
+        
+        // Ensure backwards compatibility
+        if (!settings.twitterUsers) {
+          settings.twitterUsers = defaultTwitterUsers;
+        }
+        if (!settings.pythonScriptPath) {
+          settings.pythonScriptPath = defaultSearchSettings.pythonScriptPath;
+        }
+        if (!settings.pythonExecutable) {
+          settings.pythonExecutable = defaultSearchSettings.pythonExecutable;
+        }
+        
+        return settings;
       }
-      
-      // Ensure Python script path is included
-      if (!settings.pythonScriptPath) {
-        settings.pythonScriptPath = defaultSearchSettings.pythonScriptPath;
-      }
-      
-      // Ensure Python executable is included
-      if (!settings.pythonExecutable) {
-        settings.pythonExecutable = defaultSearchSettings.pythonExecutable;
-      }
-      
-      return settings;
     } catch (error) {
       console.error("Error loading search settings:", error);
       return defaultSearchSettings;
     }
   }
 
-  // Update search settings in localStorage
-  static updateSearchSettings(settings: SearchSettings): void {
-    localStorage.setItem(SEARCH_SETTINGS_KEY, JSON.stringify(settings));
+  // Update search settings in database or localStorage
+  static async updateSearchSettings(settings: SearchSettings): Promise<void> {
+    try {
+      if (this.currentUserId) {
+        await DatabaseService.updateUserSearchSettings(settings, this.currentUserId);
+      } else {
+        localStorage.setItem(SEARCH_SETTINGS_KEY, JSON.stringify(settings));
+      }
+    } catch (error) {
+      console.error("Error updating search settings:", error);
+      throw error;
+    }
   }
 
   // Test email service 
   static async testEmailService(email: string): Promise<boolean> {
-    if (USE_MOCK_DATA) {
-      // Simulate API call
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(true);
-        }, 1000);
-      });
-    }
-    
     try {
-      const API_ENDPOINT = '/api';
-      const response = await fetch(`${API_ENDPOINT}/email/test`, {
+      console.log("Testing email service for:", email);
+      
+      const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email?test=true', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
         },
         body: JSON.stringify({ email })
       });
       
-      return response.ok;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Email test failed:", { status: response.status, statusText: response.statusText, error: errorText });
+        return false;
+      }
+      
+      const result = await response.json();
+      console.log("Email test result:", result);
+      return result.success;
     } catch (error) {
       console.error("Error testing email service:", error);
       return false;
     }
   }
 
+  // Send email with news summary
+  static async sendNewsEmail(email: string, newsItems: NewsItem[], frequency: 'daily' | 'weekly'): Promise<boolean> {
+    try {
+      console.log("Sending news email to:", email);
+      
+      const subject = `Resumen de noticias ${frequency === 'daily' ? 'diario' : 'semanal'} - News Radar`;
+      
+      // Generate HTML content for the email
+      const html = this.generateNewsEmailHTML(newsItems, frequency);
+      
+      const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
+        },
+        body: JSON.stringify({
+          to: email,
+          subject,
+          html
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Email sending failed:", { status: response.status, statusText: response.statusText, error: errorText });
+        return false;
+      }
+      
+      const result = await response.json();
+      console.log("Email sent successfully:", result);
+      return result.success;
+    } catch (error) {
+      console.error("Error sending news email:", error);
+      return false;
+    }
+  }
+
+  // Generate HTML content for news email
+  private static generateNewsEmailHTML(newsItems: NewsItem[], frequency: 'daily' | 'weekly'): string {
+    const frequencyText = frequency === 'daily' ? 'diario' : 'semanal';
+    const date = new Date().toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    let html = `
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .header { background-color: #1f2937; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; }
+            .news-item { margin-bottom: 20px; padding: 15px; border-left: 4px solid #3b82f6; background-color: #f8fafc; }
+            .news-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
+            .news-summary { margin-bottom: 10px; }
+            .news-source { font-size: 12px; color: #6b7280; }
+            .footer { background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Resumen ${frequencyText} de noticias</h1>
+            <p>${date}</p>
+          </div>
+          <div class="content">
+            <p>Aquí tienes tu resumen ${frequencyText} de noticias más relevantes:</p>
+    `;
+
+    if (newsItems.length === 0) {
+      html += `
+        <div class="news-item">
+          <p>No se encontraron noticias nuevas para este período.</p>
+        </div>
+      `;
+    } else {
+      newsItems.slice(0, 10).forEach(item => {
+        html += `
+          <div class="news-item">
+            <div class="news-title">${item.title}</div>
+            <div class="news-summary">${item.summary || 'Sin resumen disponible'}</div>
+            <div class="news-source">
+              Fuente: ${item.sourceName} | 
+              ${item.date ? item.date : 'Fecha no disponible'}
+              ${item.sourceUrl ? ` | <a href="${item.sourceUrl}" target="_blank">Leer más</a>` : ''}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    html += `
+          </div>
+          <div class="footer">
+            <p>Este correo fue enviado automáticamente por News Radar</p>
+            <p>Si no deseas recibir más correos, desactiva la opción en tu configuración</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    return html;
+  }
+
   // Send a WhatsApp message
   static async sendWhatsAppMessage(phone: string, message: string): Promise<boolean> {
     console.log(`Sending WhatsApp message to ${phone}: ${message}`);
     
-    const config = this.getWhatsAppConfig();
+    const config = await this.getWhatsAppConfig();
+    
+    // Save outgoing message to database if user is authenticated
+    if (this.currentUserId) {
+      try {
+        await DatabaseService.saveWhatsAppMessage(phone, message, 'outgoing', this.currentUserId);
+      } catch (error) {
+        console.error("Error saving outgoing WhatsApp message:", error);
+      }
+    }
     
     // In a real implementation, this would call the WhatsApp Business API
-    // For now, we'll simulate a successful API call
-    
     if (config.connectionMethod === "evolution" && config.evolutionApiUrl) {
       try {
         const headers: Record<string, string> = {
@@ -432,6 +556,15 @@ class NewsService {
   // Process WhatsApp message for retrieving news - REAL MODE ONLY
   static async processWhatsAppMessage(message: string): Promise<NewsItem[]> {
     if (!message) return [];
+    
+    // Save incoming message to database if user is authenticated
+    if (this.currentUserId) {
+      try {
+        await DatabaseService.saveWhatsAppMessage("unknown", message, 'incoming', this.currentUserId);
+      } catch (error) {
+        console.error("Error saving incoming WhatsApp message:", error);
+      }
+    }
     
     message = message.trim().toLowerCase();
     
@@ -508,13 +641,87 @@ class NewsService {
   }
 
   /**
+   * Search for news with specific query or keywords - REAL MODE ONLY
+   */
+  static async searchNews(query: string, source?: string, additionalKeywords?: string[]): Promise<NewsItem[]> {
+    if ((!query || query.trim() === "") && (!additionalKeywords || additionalKeywords.length === 0)) {
+      return this.getNews();
+    }
+    
+    const keywords: string[] = [];
+    
+    if (query && query.trim() !== "") {
+      keywords.push(query.trim());
+      await this.addToSearchHistory(query.trim());
+    }
+    
+    if (additionalKeywords && additionalKeywords.length > 0) {
+      keywords.push(...additionalKeywords.filter(k => k.trim() !== ""));
+    }
+    
+    console.log(`Searching REAL news for: ${keywords.join(', ')}`);
+    
+    let sources: string[] | undefined;
+    
+    if (source) {
+      sources = [source];
+    } else {
+      const allSources = await this.getSources();
+      const enabledSources = allSources.filter(s => s.enabled);
+      
+      if (enabledSources.length === 0) {
+        throw new Error("No hay fuentes habilitadas. Por favor habilite al menos una fuente en la configuración.");
+      }
+      
+      sources = enabledSources.map(s => s.url);
+    }
+    
+    const settings = await this.getSearchSettings();
+    
+    return fetchNewsFromPythonScript({
+      keywords: keywords,
+      sources: sources,
+      includeTwitter: settings.includeTwitter,
+      maxResults: settings.maxResults,
+      validateLinks: settings.validateLinks,
+      currentDateOnly: settings.currentDateOnly,
+      deepScrape: settings.deepScrape,
+      twitterUsers: settings.twitterUsers,
+      pythonExecutable: settings.pythonExecutable
+    });
+  }
+
+  /**
+   * Add a search term to the search history
+   */
+  static async addToSearchHistory(term: string): Promise<void> {
+    try {
+      const settings = await this.getSearchSettings();
+      const history = settings.searchHistory || [];
+      
+      // Only add if it doesn't already exist
+      if (!history.includes(term)) {
+        // Add to beginning of array (most recent first)
+        const newHistory = [term, ...history.slice(0, 19)]; // Keep last 20 items
+        
+        await this.updateSearchSettings({
+          ...settings,
+          searchHistory: newHistory
+        });
+      }
+    } catch (error) {
+      console.error("Error adding to search history:", error);
+    }
+  }
+
+  /**
    * Get news from real sources - REAL MODE ONLY
    */
   static async getNewsFromRealSources(keywords?: string[]): Promise<NewsItem[]> {
-    const settings = this.getSearchSettings();
-    const enabledSources = this.getSources()
-      .filter(source => source.enabled)
-      .map(source => source.url);
+    const settings = await this.getSearchSettings();
+    const enabledSources = await this.getSources()
+      .then(sources => sources.filter(source => source.enabled)
+      .map(source => source.url));
       
     return fetchNewsFromPythonScript({
       keywords: keywords || [],

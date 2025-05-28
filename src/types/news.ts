@@ -1,3 +1,4 @@
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -33,6 +34,12 @@ export interface EmailConfig {
   time: string;
   keywords: string[];
   lastSent?: string;
+  // SMTP Configuration
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUsername?: string;
+  smtpPassword?: string;
+  useTLS?: boolean;
 }
 
 export interface SearchSettings {
