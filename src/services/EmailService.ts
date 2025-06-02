@@ -1,5 +1,6 @@
 
 import { EmailConfig } from "@/types/news";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface EmailSendResult {
   success: boolean;
@@ -20,7 +21,6 @@ export class EmailService {
     onLog?.('info', `Iniciando envío de email a ${to}`);
     
     try {
-      // Siempre usar Resend a través de la función Edge de Supabase
       onLog?.('info', 'Enviando email a través de Resend');
       
       const payload = {
@@ -32,33 +32,32 @@ export class EmailService {
       
       onLog?.('info', 'Enviando email con Resend', payload);
       
-      const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI'
-        },
-        body: JSON.stringify(payload)
+      // Usar el cliente de Supabase en lugar de fetch directo
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: payload
       });
       
-      onLog?.('info', `Respuesta del servidor: ${response.status} - ${response.statusText}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        onLog?.('error', `Error HTTP ${response.status}: ${response.statusText}`, { errorText });
+      if (error) {
+        onLog?.('error', `Error de Supabase: ${error.message}`, error);
         return { 
           success: false, 
-          error: `Error HTTP ${response.status}: ${errorText}` 
+          error: `Error de Supabase: ${error.message}` 
         };
       }
       
-      const result = await response.json();
-      onLog?.('success', 'Email enviado correctamente con Resend', result);
+      if (data?.error) {
+        onLog?.('error', `Error del servidor: ${data.error}`, data);
+        return { 
+          success: false, 
+          error: `Error del servidor: ${data.error}` 
+        };
+      }
+      
+      onLog?.('success', 'Email enviado correctamente con Resend', data);
       
       return { 
         success: true, 
-        messageId: result.data?.id 
+        messageId: data?.data?.id 
       };
       
     } catch (error: any) {
