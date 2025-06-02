@@ -11,8 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
 import { WhatsAppConfig as WhatsAppConfigType } from "@/types/news";
 import NewsService from "@/services/NewsService";
+import { WhatsAppService } from "@/services/WhatsAppService";
+import { useLogs } from "@/hooks/useLogs";
+import LogViewer from "@/components/LogViewer";
 
 const WhatsAppConfig = () => {
+  const { logs, addLog, clearLogs } = useLogs();
   const [config, setConfig] = useState<WhatsAppConfigType>({
     enabled: false,
     phoneNumber: "",
@@ -96,22 +100,32 @@ const WhatsAppConfig = () => {
 
     setSending(true);
     try {
-      const success = await NewsService.sendWhatsAppMessage(testPhone, testMessage);
+      addLog('info', 'whatsapp', 'Iniciando envío de mensaje de prueba');
       
-      if (success) {
+      const result = await WhatsAppService.testConfiguration(
+        config,
+        testPhone,
+        testMessage,
+        (type, message, details) => addLog(type, 'whatsapp', message, details)
+      );
+      
+      if (result.success) {
         toast({
           title: "Mensaje enviado",
           description: `Mensaje enviado a ${testPhone}`
         });
+        addLog('success', 'whatsapp', `Mensaje enviado exitosamente a ${testPhone}`);
       } else {
         toast({
           title: "Error",
-          description: "No se pudo enviar el mensaje a WhatsApp",
+          description: result.error || "No se pudo enviar el mensaje a WhatsApp",
           variant: "destructive"
         });
+        addLog('error', 'whatsapp', `Error al enviar mensaje: ${result.error}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending test message:", error);
+      addLog('error', 'whatsapp', `Error inesperado al enviar mensaje: ${error.message}`, error);
       toast({
         title: "Error",
         description: "Error al enviar el mensaje de prueba",
@@ -249,6 +263,14 @@ const WhatsAppConfig = () => {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Logs Viewer */}
+      <LogViewer
+        logs={logs}
+        onClearLogs={clearLogs}
+        title="Logs de WhatsApp"
+        serviceFilter="whatsapp"
+      />
     </div>
   );
 };

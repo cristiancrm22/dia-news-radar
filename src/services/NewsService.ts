@@ -8,6 +8,7 @@ import PythonNewsAdapter, {
 } from './PythonNewsAdapter';
 import { DatabaseService } from './DatabaseService';
 import { toast } from "sonner";
+import { EmailService } from './EmailService';
 
 // Configuration - REAL MODE ONLY
 const USE_MOCK_DATA = false;
@@ -369,23 +370,12 @@ class NewsService {
     try {
       console.log("Testing email service for:", email);
       
-      const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email?test=true', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
-        },
-        body: JSON.stringify({ email })
+      const config = await this.getEmailConfig();
+      const result = await EmailService.testEmailConfiguration({
+        ...config,
+        email: email
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Email test failed:", { status: response.status, statusText: response.statusText, error: errorText });
-        return false;
-      }
-      
-      const result = await response.json();
-      console.log("Email test result:", result);
       return result.success;
     } catch (error) {
       console.error("Error testing email service:", error);
@@ -398,32 +388,14 @@ class NewsService {
     try {
       console.log("Sending news email to:", email);
       
+      const config = await this.getEmailConfig();
       const subject = `Resumen de noticias ${frequency === 'daily' ? 'diario' : 'semanal'} - News Radar`;
       
       // Generate HTML content for the email
       const html = this.generateNewsEmailHTML(newsItems, frequency);
       
-      const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
-        },
-        body: JSON.stringify({
-          to: email,
-          subject,
-          html
-        })
-      });
+      const result = await EmailService.sendEmail(config, email, subject, html);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Email sending failed:", { status: response.status, statusText: response.statusText, error: errorText });
-        return false;
-      }
-      
-      const result = await response.json();
-      console.log("Email sent successfully:", result);
       return result.success;
     } catch (error) {
       console.error("Error sending news email:", error);

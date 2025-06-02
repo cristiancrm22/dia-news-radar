@@ -9,12 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
 import { DatabaseService } from "@/services/DatabaseService";
 import NewsService from "@/services/NewsService";
+import { EmailService } from "@/services/EmailService";
 import { EmailConfig as EmailConfigType } from "@/types/news";
 import { X, Mail, Server, Save } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLogs } from "@/hooks/useLogs";
+import LogViewer from "@/components/LogViewer";
 
 const EmailConfig = () => {
   const { user } = useAuth();
+  const { logs, addLog, clearLogs } = useLogs();
   const [config, setConfig] = useState<EmailConfigType>({
     enabled: false,
     email: "",
@@ -114,26 +118,35 @@ const EmailConfig = () => {
 
     setIsTestingEmail(true);
     try {
+      addLog('info', 'email', 'Iniciando prueba de configuración de email');
+      
       // First save the configuration
       await DatabaseService.updateUserEmailConfig(config);
+      addLog('info', 'email', 'Configuración guardada antes de la prueba');
       
       // Then test the email
-      const success = await NewsService.testEmailService(config.email);
+      const result = await EmailService.testEmailConfiguration(
+        config,
+        (type, message, details) => addLog(type, 'email', message, details)
+      );
       
-      if (success) {
+      if (result.success) {
         toast({
           title: "Correo de prueba enviado",
           description: `Se envió correctamente el correo de prueba a ${config.email}`
         });
+        addLog('success', 'email', `Correo de prueba enviado exitosamente a ${config.email}`);
       } else {
         toast({
           title: "Error al enviar correo",
-          description: "No se pudo enviar el correo de prueba. Verifique la configuración.",
+          description: result.error || "Error desconocido",
           variant: "destructive"
         });
+        addLog('error', 'email', `Error al enviar correo de prueba: ${result.error}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error testing email:", error);
+      addLog('error', 'email', `Error inesperado al probar email: ${error.message}`, error);
       toast({
         title: "Error",
         description: "Error al procesar la solicitud. Verifique la configuración.",
@@ -410,6 +423,14 @@ const EmailConfig = () => {
           </div>
         </CardFooter>
       </Card>
+
+      {/* Logs Viewer */}
+      <LogViewer
+        logs={logs}
+        onClearLogs={clearLogs}
+        title="Logs de Email"
+        serviceFilter="email"
+      />
     </div>
   );
 };
