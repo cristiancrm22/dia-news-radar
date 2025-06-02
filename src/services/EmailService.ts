@@ -106,7 +106,7 @@ export class EmailService {
       onLog?.('error', `Error al enviar email: ${error.message}`, error);
       return { 
         success: false, 
-        error: error.message 
+        error: `Error de conexión: ${error.message}` 
       };
     }
   }

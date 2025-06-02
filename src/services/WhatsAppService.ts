@@ -32,25 +32,44 @@ export class WhatsAppService {
       if (config.connectionMethod === "evolution" && config.evolutionApiUrl) {
         onLog?.('info', `Usando Evolution API: ${config.evolutionApiUrl}`);
         
-        const cleanPhone = phoneNumber.replace(/\D/g, '');
+        // Para Evolution API, usar el nombre de la instancia en lugar del número
+        // Si phoneNumber parece ser un nombre de instancia (no solo números), usarlo directamente
+        let instanceName = phoneNumber;
+        
+        // Si el phoneNumber es solo números, intentar encontrar la instancia correspondiente
+        if (/^\d+$/.test(phoneNumber.replace(/\D/g, ''))) {
+          // Si es un número, necesitamos usar el nombre de la instancia
+          // Por ahora, usar "SenadoN8N" como nombre de instancia por defecto
+          // Esto debería ser configurable en el futuro
+          instanceName = "SenadoN8N";
+          onLog?.('info', `Detectado número telefónico, usando instancia: ${instanceName}`);
+        }
+        
         const headers: Record<string, string> = {
           'Content-Type': 'application/json'
         };
         
         if (config.apiKey) {
-          headers['Authorization'] = `Bearer ${config.apiKey}`;
+          headers['apikey'] = config.apiKey;
         }
         
         const payload = {
-          number: cleanPhone,
+          number: phoneNumber.replace(/\D/g, ''),
           textMessage: {
             text: message
           }
         };
         
-        onLog?.('info', 'Enviando mensaje via Evolution API', { url: config.evolutionApiUrl, payload });
+        // Usar el nombre de la instancia en la URL
+        const apiUrl = `${config.evolutionApiUrl.trim()}/message/sendText/${instanceName}`;
         
-        const response = await fetch(`${config.evolutionApiUrl.trim()}/message/sendText/${cleanPhone}`, {
+        onLog?.('info', 'Enviando mensaje via Evolution API', { 
+          url: apiUrl, 
+          payload,
+          instanceName 
+        });
+        
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload)
@@ -59,6 +78,15 @@ export class WhatsAppService {
         if (!response.ok) {
           const errorText = await response.text();
           onLog?.('error', `Error Evolution API HTTP ${response.status}: ${response.statusText}`, errorText);
+          
+          // Si el error es de instancia no encontrada, dar una sugerencia
+          if (response.status === 404 && errorText.includes('instance does not exist')) {
+            return { 
+              success: false, 
+              error: `Instancia "${instanceName}" no encontrada. Verifica el nombre de la instancia en Evolution Manager.` 
+            };
+          }
+          
           return { 
             success: false, 
             error: `Error Evolution API: ${response.status} - ${errorText}` 

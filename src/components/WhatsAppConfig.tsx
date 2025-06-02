@@ -27,6 +27,7 @@ const WhatsAppConfig = () => {
   
   const [testMessage, setTestMessage] = useState("");
   const [testPhone, setTestPhone] = useState("");
+  const [instanceName, setInstanceName] = useState("SenadoN8N"); // Nuevo campo para nombre de instancia
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -89,10 +90,15 @@ const WhatsAppConfig = () => {
       return;
     }
 
-    if (!testPhone.trim()) {
+    // Usar el nombre de instancia o el número de teléfono
+    const phoneToUse = config.connectionMethod === "evolution" ? instanceName : testPhone;
+
+    if (!phoneToUse.trim()) {
       toast({
         title: "Error",
-        description: "Por favor ingrese un número de teléfono",
+        description: config.connectionMethod === "evolution" 
+          ? "Por favor ingrese el nombre de la instancia" 
+          : "Por favor ingrese un número de teléfono",
         variant: "destructive"
       });
       return;
@@ -104,7 +110,7 @@ const WhatsAppConfig = () => {
       
       const result = await WhatsAppService.testConfiguration(
         config,
-        testPhone,
+        phoneToUse,
         testMessage,
         (type, message, details) => addLog(type, 'whatsapp', message, details)
       );
@@ -112,9 +118,9 @@ const WhatsAppConfig = () => {
       if (result.success) {
         toast({
           title: "Mensaje enviado",
-          description: `Mensaje enviado a ${testPhone}`
+          description: `Mensaje enviado a ${phoneToUse}`
         });
-        addLog('success', 'whatsapp', `Mensaje enviado exitosamente a ${testPhone}`);
+        addLog('success', 'whatsapp', `Mensaje enviado exitosamente a ${phoneToUse}`);
       } else {
         toast({
           title: "Error",
@@ -196,14 +202,29 @@ const WhatsAppConfig = () => {
             </div>
 
             {config.connectionMethod === "evolution" && (
-              <div className="space-y-2">
-                <Label htmlFor="evolution-url">URL de Evolution API</Label>
-                <Input
-                  id="evolution-url"
-                  placeholder="Ejemplo: https://api.evolution.com"
-                  value={config.evolutionApiUrl}
-                  onChange={handleEvolutionApiUrlChange}
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="evolution-url">URL de Evolution API</Label>
+                  <Input
+                    id="evolution-url"
+                    placeholder="Ejemplo: https://api.evolution.com"
+                    value={config.evolutionApiUrl}
+                    onChange={handleEvolutionApiUrlChange}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="instance-name">Nombre de la instancia</Label>
+                  <Input
+                    id="instance-name"
+                    placeholder="Ejemplo: SenadoN8N"
+                    value={instanceName}
+                    onChange={(e) => setInstanceName(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Nombre de la instancia configurada en Evolution Manager
+                  </p>
+                </div>
               </div>
             )}
 
@@ -233,15 +254,30 @@ const WhatsAppConfig = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="test-phone">Número de WhatsApp</Label>
-            <Input
-              id="test-phone"
-              placeholder="Ejemplo: +54911XXXXXXXX"
-              value={testPhone}
-              onChange={handleTestPhoneChange}
-            />
-          </div>
+          {config.connectionMethod === "evolution" ? (
+            <div className="space-y-2">
+              <Label htmlFor="test-instance">Nombre de instancia para prueba</Label>
+              <Input
+                id="test-instance"
+                placeholder="Ejemplo: SenadoN8N"
+                value={instanceName}
+                onChange={(e) => setInstanceName(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Use el nombre exacto de la instancia en Evolution Manager
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="test-phone">Número de WhatsApp</Label>
+              <Input
+                id="test-phone"
+                placeholder="Ejemplo: +54911XXXXXXXX"
+                value={testPhone}
+                onChange={handleTestPhoneChange}
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="test-message">Mensaje de prueba</Label>
