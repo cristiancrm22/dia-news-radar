@@ -24,11 +24,11 @@ export class EmailService {
       if (config.smtpHost && config.smtpUsername && config.smtpPassword) {
         onLog?.('info', `Usando configuración SMTP personalizada: ${config.smtpHost}:${config.smtpPort}`);
         
-        // Crear el payload para el envío SMTP personalizado
         const smtpPayload = {
           to,
           subject,
           html: htmlContent,
+          from: `News Radar <${config.smtpUsername}>`,
           smtpConfig: {
             host: config.smtpHost,
             port: config.smtpPort,
@@ -44,14 +44,17 @@ export class EmailService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI'
           },
           body: JSON.stringify(smtpPayload)
         });
         
+        onLog?.('info', `Respuesta del servidor: ${response.status} - ${response.statusText}`);
+        
         if (!response.ok) {
           const errorText = await response.text();
-          onLog?.('error', `Error HTTP ${response.status}: ${response.statusText}`, errorText);
+          onLog?.('error', `Error HTTP ${response.status}: ${response.statusText}`, { errorText, response: response });
           return { 
             success: false, 
             error: `Error HTTP ${response.status}: ${errorText}` 
@@ -74,7 +77,8 @@ export class EmailService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
           },
           body: JSON.stringify({
             to,
@@ -84,9 +88,11 @@ export class EmailService {
           })
         });
         
+        onLog?.('info', `Respuesta Resend: ${response.status} - ${response.statusText}`);
+        
         if (!response.ok) {
           const errorText = await response.text();
-          onLog?.('error', `Error con Resend HTTP ${response.status}: ${response.statusText}`, errorText);
+          onLog?.('error', `Error con Resend HTTP ${response.status}: ${response.statusText}`, { errorText });
           return { 
             success: false, 
             error: `Error con Resend: ${errorText}` 
@@ -103,7 +109,11 @@ export class EmailService {
       }
       
     } catch (error: any) {
-      onLog?.('error', `Error al enviar email: ${error.message}`, error);
+      onLog?.('error', `Error al enviar email: ${error.message}`, { 
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       return { 
         success: false, 
         error: `Error de conexión: ${error.message}` 

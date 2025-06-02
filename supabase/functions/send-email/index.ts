@@ -36,66 +36,45 @@ const handler = async (req: Request): Promise<Response> => {
     
     const { to, subject, html, from, smtpConfig }: EmailRequest = await req.json();
     
-    console.log("Email request data:", { to, subject, hasSmtpConfig: !!smtpConfig });
+    console.log("Email request data:", { 
+      to, 
+      subject, 
+      hasSmtpConfig: !!smtpConfig,
+      from: from || "default" 
+    });
     
-    if (smtpConfig) {
-      console.log("Using custom SMTP configuration");
+    // Siempre usar Resend ya que el SMTP personalizado no es compatible con Edge Functions
+    console.log("Using Resend for email sending");
+    
+    const emailResponse = await resend.emails.send({
+      from: from || "News Radar <onboarding@resend.dev>",
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+    });
+
+    console.log("Email sent successfully with Resend:", emailResponse);
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      data: emailResponse, 
+      method: "resend",
+      message: smtpConfig ? "Usando Resend (SMTP personalizado no disponible en Edge Functions)" : "Email enviado con Resend"
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+      },
+    });
       
-      // Para Gmail con SMTP personalizado, usar un enfoque más simple
-      // En lugar de usar SMTPClient de Deno, enviar directamente con Resend
-      // ya que el SMTP personalizado puede tener problemas de CORS
-      
-      const emailResponse = await resend.emails.send({
-        from: from || "News Radar <onboarding@resend.dev>",
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html,
-      });
-
-      console.log("Email sent successfully with Resend:", emailResponse);
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        data: emailResponse, 
-        method: "resend-fallback",
-        message: "Email enviado usando Resend (SMTP personalizado no disponible en el navegador)"
-      }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      });
-    } else {
-      console.log("Using Resend default configuration");
-      
-      const emailResponse = await resend.emails.send({
-        from: from || "News Radar <onboarding@resend.dev>",
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html,
-      });
-
-      console.log("Resend email sent successfully:", emailResponse);
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        data: emailResponse, 
-        method: "resend" 
-      }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      });
-    }
   } catch (error: any) {
     console.error("Error in send-email function:", error);
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        details: error.toString()
+        details: error.toString(),
+        success: false
       }),
       {
         status: 500,
