@@ -20,93 +20,46 @@ export class EmailService {
     onLog?.('info', `Iniciando envío de email a ${to}`);
     
     try {
-      // Si hay configuración SMTP personalizada, usarla
-      if (config.smtpHost && config.smtpUsername && config.smtpPassword) {
-        onLog?.('info', `Usando configuración SMTP personalizada: ${config.smtpHost}:${config.smtpPort}`);
-        
-        const smtpPayload = {
-          to,
-          subject,
-          html: htmlContent,
-          from: `News Radar <${config.smtpUsername}>`,
-          smtpConfig: {
-            host: config.smtpHost,
-            port: config.smtpPort,
-            username: config.smtpUsername,
-            password: config.smtpPassword,
-            useTLS: config.useTLS
-          }
-        };
-        
-        onLog?.('info', 'Enviando email con configuración SMTP personalizada', smtpPayload);
-        
-        const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI'
-          },
-          body: JSON.stringify(smtpPayload)
-        });
-        
-        onLog?.('info', `Respuesta del servidor: ${response.status} - ${response.statusText}`);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          onLog?.('error', `Error HTTP ${response.status}: ${response.statusText}`, { errorText, response: response });
-          return { 
-            success: false, 
-            error: `Error HTTP ${response.status}: ${errorText}` 
-          };
-        }
-        
-        const result = await response.json();
-        onLog?.('success', `Email enviado correctamente`, result);
-        
+      // Siempre usar Resend a través de la función Edge de Supabase
+      onLog?.('info', 'Enviando email a través de Resend');
+      
+      const payload = {
+        to,
+        subject,
+        html: htmlContent,
+        from: "News Radar <onboarding@resend.dev>"
+      };
+      
+      onLog?.('info', 'Enviando email con Resend', payload);
+      
+      const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI'
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      onLog?.('info', `Respuesta del servidor: ${response.status} - ${response.statusText}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        onLog?.('error', `Error HTTP ${response.status}: ${response.statusText}`, { errorText });
         return { 
-          success: true, 
-          messageId: result.data?.id 
-        };
-        
-      } else {
-        // Usar Resend como fallback
-        onLog?.('info', 'Usando servicio Resend (configuración por defecto)');
-        
-        const response = await fetch('https://zajgwopxogvsfpplcdie.supabase.co/functions/v1/send-email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphamd3b3B4b2d2c2ZwcGxjZGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTAzMTksImV4cCI6MjA2MzkyNjMxOX0.Qarj8I7767cuID6BR3AEY11ALiVH-MzT8Ht8XipwMGI`
-          },
-          body: JSON.stringify({
-            to,
-            subject,
-            html: htmlContent,
-            from: "News Radar <onboarding@resend.dev>"
-          })
-        });
-        
-        onLog?.('info', `Respuesta Resend: ${response.status} - ${response.statusText}`);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          onLog?.('error', `Error con Resend HTTP ${response.status}: ${response.statusText}`, { errorText });
-          return { 
-            success: false, 
-            error: `Error con Resend: ${errorText}` 
-          };
-        }
-        
-        const result = await response.json();
-        onLog?.('success', `Email enviado correctamente con Resend`, result);
-        
-        return { 
-          success: true, 
-          messageId: result.data?.id 
+          success: false, 
+          error: `Error HTTP ${response.status}: ${errorText}` 
         };
       }
+      
+      const result = await response.json();
+      onLog?.('success', 'Email enviado correctamente con Resend', result);
+      
+      return { 
+        success: true, 
+        messageId: result.data?.id 
+      };
       
     } catch (error: any) {
       onLog?.('error', `Error al enviar email: ${error.message}`, { 
@@ -138,9 +91,9 @@ export class EmailService {
       <p>Su configuración de correo electrónico está funcionando correctamente.</p>
       <p>Configuración utilizada:</p>
       <ul>
-        <li>Servidor SMTP: ${config.smtpHost || 'Resend (por defecto)'}</li>
-        <li>Puerto: ${config.smtpPort || 'N/A'}</li>
-        <li>TLS: ${config.useTLS ? 'Activado' : 'Desactivado'}</li>
+        <li>Servidor SMTP: Resend (servicio recomendado)</li>
+        <li>Puerto: N/A</li>
+        <li>TLS: Activado</li>
       </ul>
       <p>Ahora podrá recibir resúmenes de noticias en este correo.</p>
       <br>
