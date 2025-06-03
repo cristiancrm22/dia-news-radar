@@ -179,7 +179,7 @@ export class WhatsAppService {
     return this.sendMessage(config, testPhone, testMessage, onLog);
   }
 
-  // Nueva función para enviar noticias automáticamente
+  // Nueva función corregida para enviar noticias automáticamente
   static async sendScheduledNews(
     phoneNumbers: string[],
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -188,21 +188,68 @@ export class WhatsAppService {
     onLog?.('info', `Enviando noticias programadas a ${phoneNumbers.length} números`);
     
     try {
-      const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
-        body: {
-          type: 'whatsapp',
-          phoneNumbers: phoneNumbers,
-          force: true
-        }
-      });
+      // Obtener la configuración de WhatsApp actual
+      const { WhatsAppService: ConfigService } = await import('./WhatsAppService');
+      const NewsService = (await import('./NewsService')).default;
+      const config = await NewsService.getWhatsAppConfig();
       
-      if (error) {
-        onLog?.('error', `Error del servidor: ${error.message}`, error);
-        return { success: false, error: error.message };
+      if (!config.enabled) {
+        onLog?.('error', 'WhatsApp no está habilitado en la configuración');
+        return { success: false, error: 'WhatsApp no está habilitado' };
       }
       
-      onLog?.('success', 'Noticias enviadas correctamente', data);
-      return { success: true, results: data };
+      // Obtener noticias del día
+      const todayNews = await NewsService.getNews();
+      
+      if (todayNews.length === 0) {
+        onLog?.('info', 'No hay noticias para enviar hoy');
+        return { success: true, results: { message: 'No hay noticias para enviar' } };
+      }
+      
+      // Formatear noticias para WhatsApp
+      const newsMessage = this.formatNewsForWhatsApp(todayNews);
+      
+      const results = {
+        sent: 0,
+        failed: 0,
+        errors: [] as string[]
+      };
+      
+      // Enviar a cada número usando la función que sabemos que funciona
+      for (const phoneNumber of phoneNumbers) {
+        try {
+          const result = await this.sendMessage(
+            config,
+            phoneNumber,
+            newsMessage,
+            onLog
+          );
+          
+          if (result.success) {
+            results.sent++;
+            onLog?.('success', `Noticias enviadas correctamente a ${phoneNumber}`);
+          } else {
+            results.failed++;
+            results.errors.push(`${phoneNumber}: ${result.error}`);
+            onLog?.('error', `Error enviando a ${phoneNumber}: ${result.error}`);
+          }
+        } catch (error: any) {
+          results.failed++;
+          results.errors.push(`${phoneNumber}: ${error.message}`);
+          onLog?.('error', `Error inesperado enviando a ${phoneNumber}: ${error.message}`);
+        }
+      }
+      
+      onLog?.('success', `Proceso completado: ${results.sent} enviados, ${results.failed} fallidos`);
+      return { 
+        success: results.sent > 0, 
+        results: {
+          sent: results.sent,
+          failed: results.failed,
+          errors: results.errors,
+          totalNews: todayNews.length
+        }
+      };
       
     } catch (error: any) {
       onLog?.('error', `Error enviando noticias programadas: ${error.message}`, error);
@@ -219,26 +266,46 @@ export class WhatsAppService {
     onLog?.('info', `Enviando noticias del día a ${phoneNumber}`);
     
     try {
-      // Simular solicitud de noticias del día
-      const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
-        body: {
-          type: 'whatsapp',
-          phoneNumbers: [phoneNumber],
-          force: true
-        }
-      });
+      // Obtener configuración y noticias
+      const NewsService = (await import('./NewsService')).default;
+      const config = await NewsService.getWhatsAppConfig();
+      const todayNews = await NewsService.getNews();
       
-      if (error) {
-        onLog?.('error', `Error obteniendo noticias: ${error.message}`, error);
-        return { success: false, error: error.message };
+      if (todayNews.length === 0) {
+        const noNewsMessage = "📰 *NOTICIAS DEL DÍA*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
+        return this.sendMessage(config, phoneNumber, noNewsMessage, onLog);
       }
       
-      onLog?.('success', 'Noticias del día enviadas correctamente', data);
-      return { success: true, messageId: `news_${Date.now()}` };
+      // Formatear y enviar noticias
+      const newsMessage = this.formatNewsForWhatsApp(todayNews);
+      return this.sendMessage(config, phoneNumber, newsMessage, onLog);
       
     } catch (error: any) {
       onLog?.('error', `Error enviando noticias del día: ${error.message}`, error);
       return { success: false, error: error.message };
     }
+  }
+  
+  // Función auxiliar para formatear noticias para WhatsApp
+  private static formatNewsForWhatsApp(news: any[]): string {
+    let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
+    message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
+    
+    news.slice(0, 6).forEach((item, index) => {
+      message += `*${index + 1}.* ${item.title}\n`;
+      if (item.summary) {
+        message += `📝 ${item.summary.substring(0, 120)}...\n`;
+      }
+      message += `📰 Fuente: ${item.sourceName || 'Desconocida'}\n`;
+      if (item.sourceUrl) {
+        message += `🔗 ${item.sourceUrl}\n`;
+      }
+      message += "\n";
+    });
+    
+    message += "━━━━━━━━━━━━━━━━━━━━\n";
+    message += "🤖 Enviado automáticamente por News Radar";
+    
+    return message;
   }
 }

@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/use-toast";
 import { WhatsAppService } from "@/services/WhatsAppService";
@@ -54,17 +53,19 @@ const WhatsAppNewsManager = () => {
     try {
       addLog('info', 'whatsapp-news', 'Enviando noticias manualmente...');
       
+      // Usar la función corregida de WhatsAppService
       const result = await WhatsAppService.sendScheduledNews(
         phoneNumbers,
         (type, message, details) => addLog(type, 'whatsapp-news', message, details)
       );
       
       if (result.success) {
+        const results = result.results as any;
         toast({
           title: "Noticias enviadas",
-          description: `Se enviaron las noticias a ${phoneNumbers.length} números`
+          description: `Enviados: ${results?.sent || 0}, Fallidos: ${results?.failed || 0}`
         });
-        addLog('success', 'whatsapp-news', `Noticias enviadas a ${phoneNumbers.length} números`);
+        addLog('success', 'whatsapp-news', `Noticias enviadas: ${results?.sent || 0} exitosos, ${results?.failed || 0} fallidos`);
       } else {
         toast({
           title: "Error",
@@ -100,6 +101,7 @@ const WhatsAppNewsManager = () => {
     try {
       addLog('info', 'whatsapp-news', `Enviando noticias de prueba a ${testPhoneNumber}`);
       
+      // Usar la función corregida de WhatsAppService
       const result = await WhatsAppService.requestTodayNews(
         testPhoneNumber,
         (type, message, details) => addLog(type, 'whatsapp-news', message, details)
