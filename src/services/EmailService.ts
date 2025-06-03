@@ -3,9 +3,7 @@ import { sendEmailViaPython } from './PythonNewsAdapter';
 import { supabase } from "@/integrations/supabase/client";
 
 export class EmailService {
-  /**
-   * Send email using Python SMTP script (primary method)
-   */
+  
   static async sendEmailViaPython(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
     try {
       console.log("Sending email via Python SMTP with config:", {
@@ -17,7 +15,7 @@ export class EmailService {
         useTLS: config.useTLS
       });
       
-      // Asegurar que los parámetros estén correctamente formateados
+      // Formatear correctamente los parámetros para el script Python
       const pythonParams = {
         smtpHost: config.smtpHost || "smtp.gmail.com",
         smtpPort: config.smtpPort || 587,
@@ -26,12 +24,12 @@ export class EmailService {
         to: to,
         subject: subject,
         html: html,
-        useTLS: config.useTLS !== false // Default true
+        useTLS: config.useTLS !== false
       };
       
       console.log("Parámetros enviados al script Python:", {
         ...pythonParams,
-        smtpPassword: "[PROTECTED]" // No mostrar la contraseña en los logs
+        smtpPassword: "[PROTECTED]"
       });
       
       const result = await sendEmailViaPython(pythonParams);
@@ -48,9 +46,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Send email - uses Python as primary method with better error handling
-   */
   static async sendEmail(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
     console.log("EmailService.sendEmail called with config:", {
       enabled: config.enabled,
@@ -77,7 +72,7 @@ export class EmailService {
       };
     }
     
-    // Intentar envío via Python SMTP directamente (método principal)
+    // Intentar envío via Python SMTP directamente
     console.log("Attempting to send email via Python SMTP...");
     const pythonResult = await this.sendEmailViaPython(config, to, subject, html);
     
@@ -88,16 +83,12 @@ export class EmailService {
     
     console.log("Python SMTP failed:", pythonResult.error);
     
-    // Solo usar fallback si es absolutamente necesario
     return {
       success: false,
       error: `Error enviando email: ${pythonResult.error}`
     };
   }
 
-  /**
-   * Test email configuration with detailed logging
-   */
   static async testEmailConfiguration(config: EmailConfig): Promise<{success: boolean, message?: string, error?: string}> {
     try {
       console.log("Testing email configuration with:", {
@@ -108,7 +99,6 @@ export class EmailService {
         useTLS: config.useTLS
       });
       
-      // Verificar que todos los parámetros necesarios estén presentes
       if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
         return {
           success: false,
@@ -116,7 +106,6 @@ export class EmailService {
         };
       }
       
-      // Usar la dirección de email de la configuración como destinatario
       const testResult = await this.sendEmail(
         config,
         config.email,
@@ -150,9 +139,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Send scheduled news emails
-   */
   static async sendScheduledNewsEmails(
     emails: string[],
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -161,7 +147,6 @@ export class EmailService {
     onLog?.('info', `Enviando noticias programadas por email a ${emails.length} direcciones`);
     
     try {
-      // Obtener configuración y noticias
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getEmailConfig();
       
@@ -170,7 +155,6 @@ export class EmailService {
         return { success: false, error: 'Email no está habilitado' };
       }
       
-      // Obtener noticias del día
       const todayNews = await NewsService.getNews();
       
       if (todayNews.length === 0) {
@@ -184,11 +168,9 @@ export class EmailService {
         errors: [] as string[]
       };
       
-      // Generar HTML para las noticias
       const newsHtml = this.generateNewsEmailHTML(todayNews, 'daily');
       const subject = `Resumen diario de noticias - ${new Date().toLocaleDateString('es-ES')}`;
       
-      // Enviar a cada email
       for (const email of emails) {
         try {
           const result = await this.sendEmail(config, email, subject, newsHtml);
@@ -225,7 +207,6 @@ export class EmailService {
     }
   }
 
-  // Generate HTML content for news email
   private static generateNewsEmailHTML(newsItems: any[], frequency: 'daily' | 'weekly'): string {
     const frequencyText = frequency === 'daily' ? 'diario' : 'semanal';
     const date = new Date().toLocaleDateString('es-ES', {

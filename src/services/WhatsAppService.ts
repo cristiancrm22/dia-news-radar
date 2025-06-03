@@ -33,7 +33,6 @@ export class WhatsAppService {
       if (config.connectionMethod === "evolution" && config.evolutionApiUrl) {
         onLog?.('info', `Usando Evolution API: ${config.evolutionApiUrl}`);
         
-        // Limpiar y validar el número de teléfono
         const cleanNumber = phoneNumber.replace(/\D/g, '');
         
         if (cleanNumber.length < 10) {
@@ -52,7 +51,6 @@ export class WhatsAppService {
           headers['apikey'] = config.apiKey;
         }
         
-        // Usar la instancia configurada
         const instanceName = "SenadoN8N";
         
         const payload = {
@@ -68,9 +66,8 @@ export class WhatsAppService {
           instanceName 
         });
         
-        // Añadir timeout y mejor manejo de errores
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
         
         try {
           const response = await fetch(apiUrl, {
@@ -86,7 +83,6 @@ export class WhatsAppService {
             const errorText = await response.text();
             onLog?.('error', `Error Evolution API HTTP ${response.status}: ${response.statusText}`, errorText);
             
-            // Si el error es de instancia no encontrada, dar una sugerencia
             if (response.status === 404 && errorText.includes('instance does not exist')) {
               return { 
                 success: false, 
@@ -94,7 +90,6 @@ export class WhatsAppService {
               };
             }
             
-            // Si el error es de número no válido, dar una sugerencia específica
             if (response.status === 400 && errorText.includes('exists":false')) {
               return { 
                 success: false, 
@@ -128,10 +123,8 @@ export class WhatsAppService {
         }
         
       } else {
-        // Simulación para WhatsApp Business API oficial
         onLog?.('info', 'Simulando envío via WhatsApp Business API oficial');
         
-        // Simular delay de API
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         onLog?.('success', 'Mensaje simulado enviado correctamente (WhatsApp Business API)');
@@ -145,7 +138,6 @@ export class WhatsAppService {
     } catch (error: any) {
       onLog?.('error', `Error al enviar mensaje WhatsApp: ${error.message}`, error);
       
-      // Mejorar los mensajes de error según el tipo
       if (error.message.includes('fetch')) {
         return { 
           success: false, 
@@ -179,7 +171,7 @@ export class WhatsAppService {
     return this.sendMessage(config, testPhone, testMessage, onLog);
   }
 
-  // Función corregida para enviar noticias automáticamente
+  // Usar la misma función sendMessage para envío programado
   static async sendScheduledNews(
     phoneNumbers: string[],
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -188,7 +180,6 @@ export class WhatsAppService {
     onLog?.('info', `Enviando noticias programadas a ${phoneNumbers.length} números`);
     
     try {
-      // Obtener la configuración de WhatsApp actual
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
@@ -197,7 +188,6 @@ export class WhatsAppService {
         return { success: false, error: 'WhatsApp no está habilitado' };
       }
       
-      // Obtener noticias del día
       const todayNews = await NewsService.getNews();
       
       if (todayNews.length === 0) {
@@ -205,7 +195,6 @@ export class WhatsAppService {
         return { success: true, results: { message: 'No hay noticias para enviar' } };
       }
       
-      // Formatear noticias para WhatsApp
       const newsMessage = this.formatNewsForWhatsApp(todayNews);
       
       const results = {
@@ -214,9 +203,11 @@ export class WhatsAppService {
         errors: [] as string[]
       };
       
-      // Enviar a cada número usando la función que sabemos que funciona
+      // Usar la función sendMessage que sabemos que funciona
       for (const phoneNumber of phoneNumbers) {
         try {
+          onLog?.('info', `Enviando noticias a ${phoneNumber}`);
+          
           const result = await this.sendMessage(
             config,
             phoneNumber,
@@ -256,7 +247,7 @@ export class WhatsAppService {
     }
   }
 
-  // Función corregida para solicitar noticias manualmente - AHORA ES ENVÍO REAL
+  // Usar la misma función sendMessage para solicitud manual
   static async requestTodayNews(
     phoneNumber: string,
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -265,7 +256,6 @@ export class WhatsAppService {
     onLog?.('info', `Enviando noticias del día a ${phoneNumber} (ENVÍO REAL)`);
     
     try {
-      // Obtener configuración y noticias
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
@@ -278,13 +268,14 @@ export class WhatsAppService {
       
       if (todayNews.length === 0) {
         const noNewsMessage = "📰 *NOTICIAS DEL DÍA*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
+        onLog?.('info', 'Enviando mensaje de "no hay noticias"');
         return this.sendMessage(config, phoneNumber, noNewsMessage, onLog);
       }
       
-      // Formatear y enviar noticias usando la función real de envío
       const newsMessage = this.formatNewsForWhatsApp(todayNews);
-      onLog?.('info', 'Enviando noticias reales (no simulación)');
+      onLog?.('info', 'Enviando noticias reales usando sendMessage');
       
+      // Usar la función sendMessage que sabemos que funciona
       return this.sendMessage(config, phoneNumber, newsMessage, onLog);
       
     } catch (error: any) {
@@ -293,7 +284,6 @@ export class WhatsAppService {
     }
   }
   
-  // Función auxiliar para formatear noticias para WhatsApp
   private static formatNewsForWhatsApp(news: any[]): string {
     let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;

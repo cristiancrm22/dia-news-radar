@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,10 +31,10 @@ const WhatsAppConfig = () => {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    // Load config with proper async handling
     const loadConfig = async () => {
       try {
         const savedConfig = await NewsService.getWhatsAppConfig();
+        console.log("Loaded WhatsApp config:", savedConfig);
         setConfig(savedConfig);
       } catch (error) {
         console.error("Error loading WhatsApp config:", error);
@@ -46,26 +45,35 @@ const WhatsAppConfig = () => {
   }, []);
 
   const handleEnabledChange = (enabled: boolean) => {
-    setConfig(prev => ({ ...prev, enabled }));
+    const newConfig = { ...config, enabled };
+    setConfig(newConfig);
+    NewsService.updateWhatsAppConfig(newConfig);
   };
 
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setConfig(prev => ({ ...prev, phoneNumber: e.target.value }));
+    const newConfig = { ...config, phoneNumber: e.target.value };
+    setConfig(newConfig);
   };
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setConfig(prev => ({ ...prev, apiKey: e.target.value }));
+    const newConfig = { ...config, apiKey: e.target.value };
+    setConfig(newConfig);
   };
 
   const handleConnectionMethodChange = (value: "official" | "evolution" | "businesscloud") => {
-    setConfig(prev => ({ ...prev, connectionMethod: value }));
+    const newConfig = { ...config, connectionMethod: value };
+    setConfig(newConfig);
+    NewsService.updateWhatsAppConfig(newConfig);
   };
 
   const handleEvolutionApiUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setConfig(prev => ({ ...prev, evolutionApiUrl: e.target.value }));
+    const newConfig = { ...config, evolutionApiUrl: e.target.value };
+    setConfig(newConfig);
+    console.log("Evolution API URL changed to:", e.target.value);
   };
 
   const handleSaveConfig = () => {
+    console.log("Saving WhatsApp config:", config);
     NewsService.updateWhatsAppConfig(config);
     toast({
       title: "Configuración guardada",
@@ -91,7 +99,6 @@ const WhatsAppConfig = () => {
       return;
     }
 
-    // Usar el testPhone si está configurado, sino usar el número principal
     const phoneToUse = testPhone.trim() || config.phoneNumber;
 
     if (!phoneToUse.trim()) {
@@ -107,7 +114,7 @@ const WhatsAppConfig = () => {
     try {
       addLog('info', 'whatsapp', 'Iniciando envío de mensaje de prueba');
       
-      const result = await WhatsAppService.testConfiguration(
+      const result = await WhatsAppService.sendMessage(
         config,
         phoneToUse,
         testMessage,
@@ -214,9 +221,12 @@ const WhatsAppConfig = () => {
                       <Input
                         id="evolution-url"
                         placeholder="Ejemplo: https://api.evolution.com"
-                        value={config.evolutionApiUrl}
+                        value={config.evolutionApiUrl || ""}
                         onChange={handleEvolutionApiUrlChange}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        URL completa del servidor Evolution API
+                      </p>
                     </div>
                     
                     <div className="space-y-2">
@@ -294,7 +304,6 @@ const WhatsAppConfig = () => {
             </CardContent>
           </Card>
 
-          {/* Logs Viewer */}
           <LogViewer
             logs={logs}
             onClearLogs={clearLogs}
