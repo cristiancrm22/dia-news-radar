@@ -1,4 +1,3 @@
-
 import { EmailConfig } from "@/types/news";
 import { sendEmailViaPython } from './PythonNewsAdapter';
 import { supabase } from "@/integrations/supabase/client";
@@ -18,16 +17,24 @@ export class EmailService {
         useTLS: config.useTLS
       });
       
-      const result = await sendEmailViaPython({
-        smtpHost: config.smtpHost,
-        smtpPort: config.smtpPort,
+      // Asegurar que los parámetros estén correctamente formateados
+      const pythonParams = {
+        smtpHost: config.smtpHost || "smtp.gmail.com",
+        smtpPort: config.smtpPort || 587,
         smtpUsername: config.smtpUsername,
         smtpPassword: config.smtpPassword,
         to: to,
         subject: subject,
         html: html,
-        useTLS: config.useTLS
+        useTLS: config.useTLS !== false // Default true
+      };
+      
+      console.log("Parámetros enviados al script Python:", {
+        ...pythonParams,
+        smtpPassword: "[PROTECTED]" // No mostrar la contraseña en los logs
       });
+      
+      const result = await sendEmailViaPython(pythonParams);
       
       console.log("Python email result:", result);
       return result;
@@ -70,7 +77,7 @@ export class EmailService {
       };
     }
     
-    // Intentar envío via Python SMTP
+    // Intentar envío via Python SMTP directamente (método principal)
     console.log("Attempting to send email via Python SMTP...");
     const pythonResult = await this.sendEmailViaPython(config, to, subject, html);
     
@@ -80,40 +87,12 @@ export class EmailService {
     }
     
     console.log("Python SMTP failed:", pythonResult.error);
-    console.log("Trying Supabase Edge Function fallback...");
     
-    // Fallback a Supabase Edge Function
-    try {
-      const { data, error } = await supabase.functions.invoke('send-email', {
-        body: {
-          to: to,
-          subject: subject,
-          html: html,
-          from: `News Radar <${config.smtpUsername}>`
-        }
-      });
-
-      if (error) {
-        console.error("Error in Supabase email function:", error);
-        return {
-          success: false,
-          error: `Error en función de Supabase: ${error.message}. Error original de Python: ${pythonResult.error}`
-        };
-      }
-
-      console.log("Email sent successfully via Supabase Edge Function:", data);
-      return {
-        success: true,
-        message: "Email enviado correctamente via Supabase (fallback)"
-      };
-      
-    } catch (error: any) {
-      console.error("Error in email fallback:", error);
-      return {
-        success: false,
-        error: `Error en todos los métodos de envío. Python: ${pythonResult.error}. Supabase: ${error.message}`
-      };
-    }
+    // Solo usar fallback si es absolutamente necesario
+    return {
+      success: false,
+      error: `Error enviando email: ${pythonResult.error}`
+    };
   }
 
   /**
@@ -128,6 +107,14 @@ export class EmailService {
         email: config.email,
         useTLS: config.useTLS
       });
+      
+      // Verificar que todos los parámetros necesarios estén presentes
+      if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
+        return {
+          success: false,
+          error: "Configuración incompleta. Faltan: servidor SMTP, usuario o contraseña."
+        };
+      }
       
       // Usar la dirección de email de la configuración como destinatario
       const testResult = await this.sendEmail(

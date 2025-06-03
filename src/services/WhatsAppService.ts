@@ -179,7 +179,7 @@ export class WhatsAppService {
     return this.sendMessage(config, testPhone, testMessage, onLog);
   }
 
-  // Nueva función corregida para enviar noticias automáticamente
+  // Función corregida para enviar noticias automáticamente
   static async sendScheduledNews(
     phoneNumbers: string[],
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -189,7 +189,6 @@ export class WhatsAppService {
     
     try {
       // Obtener la configuración de WhatsApp actual
-      const { WhatsAppService: ConfigService } = await import('./WhatsAppService');
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
@@ -257,18 +256,24 @@ export class WhatsAppService {
     }
   }
 
-  // Nueva función para solicitar noticias manualmente
+  // Función corregida para solicitar noticias manualmente - AHORA ES ENVÍO REAL
   static async requestTodayNews(
     phoneNumber: string,
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
   ): Promise<WhatsAppSendResult> {
     
-    onLog?.('info', `Enviando noticias del día a ${phoneNumber}`);
+    onLog?.('info', `Enviando noticias del día a ${phoneNumber} (ENVÍO REAL)`);
     
     try {
       // Obtener configuración y noticias
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
+      
+      if (!config.enabled) {
+        onLog?.('error', 'WhatsApp no está habilitado en la configuración');
+        return { success: false, error: 'WhatsApp no está habilitado' };
+      }
+      
       const todayNews = await NewsService.getNews();
       
       if (todayNews.length === 0) {
@@ -276,8 +281,10 @@ export class WhatsAppService {
         return this.sendMessage(config, phoneNumber, noNewsMessage, onLog);
       }
       
-      // Formatear y enviar noticias
+      // Formatear y enviar noticias usando la función real de envío
       const newsMessage = this.formatNewsForWhatsApp(todayNews);
+      onLog?.('info', 'Enviando noticias reales (no simulación)');
+      
       return this.sendMessage(config, phoneNumber, newsMessage, onLog);
       
     } catch (error: any) {
