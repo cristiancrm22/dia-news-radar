@@ -125,10 +125,7 @@ const EmailConfig = () => {
       addLog('info', 'email', 'Configuración guardada antes de la prueba');
       
       // Then test the email
-      const result = await EmailService.testEmailConfiguration(
-        config,
-        (type, message, details) => addLog(type, 'email', message, details)
-      );
+      const result = await EmailService.testEmailConfiguration(config);
       
       if (result.success) {
         toast({

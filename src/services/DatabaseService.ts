@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 
@@ -210,6 +209,50 @@ export class DatabaseService {
       twitterUsers: twitterUsers,
       pythonScriptPath: data?.python_script_path || "python3",
       pythonExecutable: data?.python_executable || "python"
+    };
+  }
+
+  static async upsertUserSearchSettings(settings: SearchSettings, userId: string): Promise<SearchSettings> {
+    const { data, error } = await supabase
+      .from('user_search_settings')
+      .upsert({
+        user_id: userId,
+        max_results: settings.maxResults,
+        include_twitter: settings.includeTwitter,
+        validate_links: settings.validateLinks,
+        current_date_only: settings.currentDateOnly,
+        deep_scrape: settings.deepScrape,
+        python_script_path: settings.pythonScriptPath,
+        python_executable: settings.pythonExecutable,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error upserting user search settings:', error);
+      throw error;
+    }
+
+    // Get keywords
+    const keywords = await this.getUserKeywords(userId);
+    
+    // Get Twitter users
+    const twitterUsers = await this.getUserTwitterUsers(userId);
+
+    return {
+      maxResults: data.max_results,
+      includeTwitter: data.include_twitter,
+      keywords: keywords,
+      validateLinks: data.validate_links,
+      currentDateOnly: data.current_date_only,
+      searchHistory: [],
+      deepScrape: data.deep_scrape,
+      twitterUsers: twitterUsers,
+      pythonScriptPath: data.python_script_path,
+      pythonExecutable: data.python_executable
     };
   }
 

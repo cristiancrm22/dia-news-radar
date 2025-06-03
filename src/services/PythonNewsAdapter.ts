@@ -688,6 +688,54 @@ function inferTopicsFromText(text: string): string[] {
   return topics;
 }
 
+/**
+ * Send email using Python SMTP script
+ */
+export const sendEmailViaPython = async (emailConfig: {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUsername: string;
+  smtpPassword: string;
+  to: string;
+  subject: string;
+  html: string;
+  useTLS: boolean;
+}): Promise<{ success: boolean; message?: string; error?: string }> => {
+  try {
+    console.log("Sending email via Python SMTP script...");
+    
+    const payload = {
+      action: 'send-email',
+      config: emailConfig
+    };
+
+    const response = await fetch('http://localhost:8000/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000) // 30 second timeout
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log("Python email result:", result);
+    
+    return result;
+    
+  } catch (error: any) {
+    console.error("Error sending email via Python:", error);
+    return {
+      success: false,
+      error: error.message || "Error enviando email via Python"
+    };
+  }
+};
+
 export default {
   fetchNewsFromPythonScript,
   executePythonScript,
@@ -695,5 +743,6 @@ export default {
   loadResultsFromCsv,
   validateUrl,
   exportNewsToCSV,
-  downloadNewsCSV
+  downloadNewsCSV,
+  sendEmailViaPython
 };

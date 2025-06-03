@@ -10,7 +10,7 @@ export interface LogEntry {
   id: string;
   timestamp: Date;
   type: 'info' | 'error' | 'warning' | 'success';
-  service: 'email' | 'whatsapp' | 'general';
+  service: 'email' | 'whatsapp' | 'general' | 'whatsapp-news';
   message: string;
   details?: any;
 }
@@ -19,7 +19,7 @@ interface LogViewerProps {
   logs: LogEntry[];
   onClearLogs: () => void;
   title: string;
-  serviceFilter?: 'email' | 'whatsapp';
+  serviceFilter?: 'email' | 'whatsapp' | 'whatsapp-news';
 }
 
 const LogViewer = ({ logs, onClearLogs, title, serviceFilter }: LogViewerProps) => {

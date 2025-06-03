@@ -134,21 +134,11 @@ class NewsService {
     
     if (scriptStatus.completed && !scriptStatus.error && scriptStatus.csvPath) {
       const results = await loadResultsFromCsv(scriptStatus.csvPath);
-      console.log("Loaded REAL results:", results.length, "news items");
+      console.log("Loaded REAL results from CSV:", results.length, "news items");
       
-      // Filter results by keywords if they are configured
-      let filteredResults = results;
-      if (settings.keywords && settings.keywords.length > 0) {
-        filteredResults = results.filter(item => {
-          const searchText = `${item.title} ${item.summary}`.toLowerCase();
-          return settings.keywords.some(keyword => 
-            searchText.includes(keyword.toLowerCase())
-          );
-        });
-        console.log(`Filtered by keywords (${settings.keywords.join(', ')}):`, filteredResults.length, "news items");
-      }
-      
-      return filteredResults;
+      // Return ALL results, don't filter by keywords here since Python already did the filtering
+      console.log("Returning all Python results without additional filtering:", results.length, "news items");
+      return results;
     } else if (scriptStatus.error) {
       throw new Error(`Error ejecutando script: ${scriptStatus.error}`);
     } else {
@@ -327,7 +317,15 @@ class NewsService {
   static async getSearchSettings(): Promise<SearchSettings> {
     try {
       if (this.currentUserId) {
-        return await DatabaseService.getUserSearchSettings(this.currentUserId);
+        const dbSettings = await DatabaseService.getUserSearchSettings(this.currentUserId);
+        // Ensure we have all required fields with proper defaults
+        return {
+          ...defaultSearchSettings,
+          ...dbSettings,
+          twitterUsers: dbSettings.twitterUsers || defaultTwitterUsers,
+          pythonScriptPath: dbSettings.pythonScriptPath || defaultSearchSettings.pythonScriptPath,
+          pythonExecutable: dbSettings.pythonExecutable || defaultSearchSettings.pythonExecutable
+        };
       } else {
         const savedSettings = localStorage.getItem(SEARCH_SETTINGS_KEY);
         const settings = savedSettings ? JSON.parse(savedSettings) : defaultSearchSettings;
@@ -355,7 +353,8 @@ class NewsService {
   static async updateSearchSettings(settings: SearchSettings): Promise<void> {
     try {
       if (this.currentUserId) {
-        await DatabaseService.updateUserSearchSettings(settings, this.currentUserId);
+        // Use UPSERT approach to avoid duplicate key errors
+        await DatabaseService.upsertUserSearchSettings(settings, this.currentUserId);
       } else {
         localStorage.setItem(SEARCH_SETTINGS_KEY, JSON.stringify(settings));
       }

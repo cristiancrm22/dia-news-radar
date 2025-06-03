@@ -16,13 +16,7 @@ interface EmailRequest {
   subject: string;
   html: string;
   from?: string;
-  smtpConfig?: {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-    useTLS: boolean;
-  };
+  test?: boolean;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -34,17 +28,32 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     console.log("Processing email request...");
     
-    const { to, subject, html, from, smtpConfig }: EmailRequest = await req.json();
+    const { to, subject, html, from, test }: EmailRequest = await req.json();
     
     console.log("Email request data:", { 
       to, 
       subject, 
-      hasSmtpConfig: !!smtpConfig,
-      from: from || "default" 
+      from: from || "default",
+      test: test || false
     });
     
-    // Siempre usar Resend ya que el SMTP personalizado no es compatible con Edge Functions
-    console.log("Using Resend for email sending");
+    // Verificar que tenemos la clave API
+    const apiKey = Deno.env.get("RESEND_API_KEY");
+    if (!apiKey) {
+      console.error("RESEND_API_KEY not configured");
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "RESEND_API_KEY no configurada en las variables de entorno"
+      }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      });
+    }
+    
+    console.log("Using Resend for email sending with API key configured");
     
     const emailResponse = await resend.emails.send({
       from: from || "News Radar <onboarding@resend.dev>",
@@ -59,7 +68,7 @@ const handler = async (req: Request): Promise<Response> => {
       success: true, 
       data: emailResponse, 
       method: "resend",
-      message: smtpConfig ? "Usando Resend (SMTP personalizado no disponible en Edge Functions)" : "Email enviado con Resend"
+      message: test ? "Email de prueba enviado correctamente" : "Email enviado correctamente"
     }), {
       status: 200,
       headers: {

@@ -1,5 +1,4 @@
-// Corrigiendo el error TS2322
-// Asegurarse de usar los tipos correctos para connectionMethod
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,12 +7,14 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/use-toast";
 import { WhatsAppConfig as WhatsAppConfigType } from "@/types/news";
 import NewsService from "@/services/NewsService";
 import { WhatsAppService } from "@/services/WhatsAppService";
 import { useLogs } from "@/hooks/useLogs";
 import LogViewer from "@/components/LogViewer";
+import WhatsAppNewsManager from "@/components/WhatsAppNewsManager";
 
 const WhatsAppConfig = () => {
   const { logs, addLog, clearLogs } = useLogs();
@@ -27,7 +28,7 @@ const WhatsAppConfig = () => {
   
   const [testMessage, setTestMessage] = useState("");
   const [testPhone, setTestPhone] = useState("");
-  const [instanceName, setInstanceName] = useState("SenadoN8N"); // Nuevo campo para nombre de instancia
+  const [instanceName, setInstanceName] = useState("SenadoN8N");
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -90,15 +91,13 @@ const WhatsAppConfig = () => {
       return;
     }
 
-    // Usar el nombre de instancia o el número de teléfono
-    const phoneToUse = config.connectionMethod === "evolution" ? instanceName : testPhone;
+    // Usar el testPhone si está configurado, sino usar el número principal
+    const phoneToUse = testPhone.trim() || config.phoneNumber;
 
     if (!phoneToUse.trim()) {
       toast({
         title: "Error",
-        description: config.connectionMethod === "evolution" 
-          ? "Por favor ingrese el nombre de la instancia" 
-          : "Por favor ingrese un número de teléfono",
+        description: "Por favor ingrese un número de teléfono",
         variant: "destructive"
       });
       return;
@@ -144,169 +143,170 @@ const WhatsAppConfig = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuración de WhatsApp</CardTitle>
-          <CardDescription>
-            Configure la integración con WhatsApp para recibir y enviar notificaciones
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="whatsapp-enabled" className="flex flex-col space-y-1">
-              <span>Habilitar WhatsApp</span>
-              <span className="font-normal text-sm text-muted-foreground">
-                Activa la integración con WhatsApp
-              </span>
-            </Label>
-            <Switch
-              id="whatsapp-enabled"
-              checked={config.enabled}
-              onCheckedChange={handleEnabledChange}
-            />
-          </div>
-
-          <div className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone-number">Número de WhatsApp</Label>
-              <Input
-                id="phone-number"
-                placeholder="Ejemplo: +54911XXXXXXXX"
-                value={config.phoneNumber}
-                onChange={handlePhoneNumberChange}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Método de conexión</Label>
-              <RadioGroup
-                value={config.connectionMethod}
-                onValueChange={(value) => 
-                  handleConnectionMethodChange(value as "official" | "evolution" | "businesscloud")
-                }
-                className="flex flex-col space-y-2"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="official" id="official" />
-                  <Label htmlFor="official">WhatsApp Business API (Oficial)</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="evolution" id="evolution" />
-                  <Label htmlFor="evolution">Evolution API (No oficial)</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="businesscloud" id="businesscloud" />
-                  <Label htmlFor="businesscloud">Business Cloud API</Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            {config.connectionMethod === "evolution" && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="evolution-url">URL de Evolution API</Label>
-                  <Input
-                    id="evolution-url"
-                    placeholder="Ejemplo: https://api.evolution.com"
-                    value={config.evolutionApiUrl}
-                    onChange={handleEvolutionApiUrlChange}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="instance-name">Nombre de la instancia</Label>
-                  <Input
-                    id="instance-name"
-                    placeholder="Ejemplo: SenadoN8N"
-                    value={instanceName}
-                    onChange={(e) => setInstanceName(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Nombre de la instancia configurada en Evolution Manager
-                  </p>
-                </div>
+      <Tabs defaultValue="config" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="config">Configuración</TabsTrigger>
+          <TabsTrigger value="news">Gestión de Noticias</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="config" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuración de WhatsApp</CardTitle>
+              <CardDescription>
+                Configure la integración con WhatsApp para recibir y enviar notificaciones
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="whatsapp-enabled" className="flex flex-col space-y-1">
+                  <span>Habilitar WhatsApp</span>
+                  <span className="font-normal text-sm text-muted-foreground">
+                    Activa la integración con WhatsApp
+                  </span>
+                </Label>
+                <Switch
+                  id="whatsapp-enabled"
+                  checked={config.enabled}
+                  onCheckedChange={handleEnabledChange}
+                />
               </div>
-            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                type="password"
-                placeholder="Ingrese su API key"
-                value={config.apiKey}
-                onChange={handleApiKeyChange}
-              />
-            </div>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone-number">Número de WhatsApp</Label>
+                  <Input
+                    id="phone-number"
+                    placeholder="Ejemplo: +54911XXXXXXXX"
+                    value={config.phoneNumber}
+                    onChange={handlePhoneNumberChange}
+                  />
+                </div>
 
-            <Button onClick={handleSaveConfig} className="w-full">
-              Guardar configuración
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                <div className="space-y-2">
+                  <Label>Método de conexión</Label>
+                  <RadioGroup
+                    value={config.connectionMethod}
+                    onValueChange={(value) => 
+                      handleConnectionMethodChange(value as "official" | "evolution" | "businesscloud")
+                    }
+                    className="flex flex-col space-y-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="official" id="official" />
+                      <Label htmlFor="official">WhatsApp Business API (Oficial)</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="evolution" id="evolution" />
+                      <Label htmlFor="evolution">Evolution API (No oficial)</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="businesscloud" id="businesscloud" />
+                      <Label htmlFor="businesscloud">Business Cloud API</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Probar envío de mensajes</CardTitle>
-          <CardDescription>
-            Envíe un mensaje de prueba para verificar la configuración
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {config.connectionMethod === "evolution" ? (
-            <div className="space-y-2">
-              <Label htmlFor="test-instance">Nombre de instancia para prueba</Label>
-              <Input
-                id="test-instance"
-                placeholder="Ejemplo: SenadoN8N"
-                value={instanceName}
-                onChange={(e) => setInstanceName(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Use el nombre exacto de la instancia en Evolution Manager
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="test-phone">Número de WhatsApp</Label>
-              <Input
-                id="test-phone"
-                placeholder="Ejemplo: +54911XXXXXXXX"
-                value={testPhone}
-                onChange={handleTestPhoneChange}
-              />
-            </div>
-          )}
+                {config.connectionMethod === "evolution" && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="evolution-url">URL de Evolution API</Label>
+                      <Input
+                        id="evolution-url"
+                        placeholder="Ejemplo: https://api.evolution.com"
+                        value={config.evolutionApiUrl}
+                        onChange={handleEvolutionApiUrlChange}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="instance-name">Nombre de la instancia</Label>
+                      <Input
+                        id="instance-name"
+                        placeholder="Ejemplo: SenadoN8N"
+                        value={instanceName}
+                        onChange={(e) => setInstanceName(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Nombre de la instancia configurada en Evolution Manager
+                      </p>
+                    </div>
+                  </div>
+                )}
 
-          <div className="space-y-2">
-            <Label htmlFor="test-message">Mensaje de prueba</Label>
-            <Textarea
-              id="test-message"
-              placeholder="Escriba su mensaje de prueba aquí..."
-              value={testMessage}
-              onChange={handleTestMessageChange}
-              rows={3}
-            />
-          </div>
+                <div className="space-y-2">
+                  <Label htmlFor="api-key">API Key</Label>
+                  <Input
+                    id="api-key"
+                    type="password"
+                    placeholder="Ingrese su API key"
+                    value={config.apiKey}
+                    onChange={handleApiKeyChange}
+                  />
+                </div>
 
-          <Button 
-            onClick={handleSendTestMessage} 
-            className="w-full"
-            disabled={sending}
-          >
-            {sending ? "Enviando..." : "Enviar mensaje de prueba"}
-          </Button>
-        </CardContent>
-      </Card>
+                <Button onClick={handleSaveConfig} className="w-full">
+                  Guardar configuración
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Logs Viewer */}
-      <LogViewer
-        logs={logs}
-        onClearLogs={clearLogs}
-        title="Logs de WhatsApp"
-        serviceFilter="whatsapp"
-      />
+          <Card>
+            <CardHeader>
+              <CardTitle>Probar envío de mensajes</CardTitle>
+              <CardDescription>
+                Envíe un mensaje de prueba para verificar la configuración
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="test-phone">Número de WhatsApp para prueba</Label>
+                <Input
+                  id="test-phone"
+                  placeholder="Ejemplo: +54911XXXXXXXX"
+                  value={testPhone}
+                  onChange={handleTestPhoneChange}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Número completo con código de país
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="test-message">Mensaje de prueba</Label>
+                <Textarea
+                  id="test-message"
+                  placeholder="Escriba su mensaje de prueba aquí..."
+                  value={testMessage}
+                  onChange={handleTestMessageChange}
+                  rows={3}
+                />
+              </div>
+
+              <Button 
+                onClick={handleSendTestMessage} 
+                className="w-full"
+                disabled={sending}
+              >
+                {sending ? "Enviando..." : "Enviar mensaje de prueba"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Logs Viewer */}
+          <LogViewer
+            logs={logs}
+            onClearLogs={clearLogs}
+            title="Logs de WhatsApp"
+            serviceFilter="whatsapp"
+          />
+        </TabsContent>
+        
+        <TabsContent value="news">
+          <WhatsAppNewsManager />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
