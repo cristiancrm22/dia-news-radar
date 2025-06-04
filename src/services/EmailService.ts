@@ -1,5 +1,4 @@
 import { EmailConfig } from "@/types/news";
-import { sendEmailViaPython } from './PythonNewsAdapter';
 import { supabase } from "@/integrations/supabase/client";
 
 export class EmailService {
@@ -15,26 +14,45 @@ export class EmailService {
         useTLS: config.useTLS
       });
       
-      // Formatear correctamente los parámetros para el script Python
-      const pythonParams = {
-        smtpHost: config.smtpHost || "smtp.gmail.com",
-        smtpPort: config.smtpPort || 587,
-        smtpUsername: config.smtpUsername,
-        smtpPassword: config.smtpPassword,
-        to: to,
-        subject: subject,
-        html: html,
-        useTLS: config.useTLS !== false
+      // Usar la estructura correcta de parámetros que funciona
+      const requestBody = {
+        config: {
+          smtpHost: config.smtpHost || "smtp.gmail.com",
+          smtpPort: config.smtpPort || 587,
+          smtpUsername: config.smtpUsername,
+          smtpPassword: config.smtpPassword,
+          to: to,
+          subject: subject,
+          html: html,
+          useTLS: config.useTLS !== false
+        }
       };
       
-      console.log("Parámetros enviados al script Python:", {
-        ...pythonParams,
-        smtpPassword: "[PROTECTED]"
+      console.log("Enviando solicitud al servidor Python:", {
+        url: "http://localhost:8000/send-email",
+        config: {
+          ...requestBody.config,
+          smtpPassword: "[PROTECTED]"
+        }
       });
       
-      const result = await sendEmailViaPython(pythonParams);
+      const response = await fetch("http://localhost:8000/send-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody)
+      });
       
-      console.log("Python email result:", result);
+      console.log("Respuesta del servidor:", response.status, response.statusText);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log("Resultado del envío de email:", result);
+      
       return result;
       
     } catch (error: any) {
