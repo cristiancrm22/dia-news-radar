@@ -1,11 +1,11 @@
 import { EmailConfig } from "@/types/news";
-import { supabase } from "@/integrations/supabase/client";
 
 export class EmailService {
   
   static async sendEmailViaPython(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
     try {
-      console.log("Sending email via Python SMTP with config:", {
+      console.log("=== ENVÍO EMAIL VIA PYTHON ===");
+      console.log("Config:", {
         smtpHost: config.smtpHost,
         smtpPort: config.smtpPort,
         smtpUsername: config.smtpUsername,
@@ -14,8 +14,7 @@ export class EmailService {
         useTLS: config.useTLS
       });
       
-      // Usar los parámetros correctos como en el script Python que funciona
-      const pythonArgs = {
+      const emailData = {
         smtp_host: config.smtpHost || "smtp.gmail.com",
         smtp_port: config.smtpPort || 587,
         smtp_user: config.smtpUsername,
@@ -26,33 +25,34 @@ export class EmailService {
         use_tls: config.useTLS !== false
       };
       
-      console.log("Enviando email con parámetros Python correctos:", {
-        ...pythonArgs,
-        smtp_pass: "[PROTECTED]"
+      console.log("Datos del email (sin password):", {
+        ...emailData,
+        smtp_pass: "[PROTEGIDO]"
       });
       
-      // Llamar al endpoint correcto del servidor Python
       const response = await fetch("http://localhost:8000/api/email/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(pythonArgs)
+        body: JSON.stringify(emailData)
       });
       
-      console.log("Respuesta del servidor Python:", response.status, response.statusText);
+      console.log("Respuesta del servidor:", response.status, response.statusText);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error("Error del servidor:", errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
       const result = await response.json();
-      console.log("Resultado del envío de email:", result);
+      console.log("Resultado exitoso:", result);
       
       return result;
       
     } catch (error: any) {
-      console.error("Error in sendEmailViaPython:", error);
+      console.error("Error completo en sendEmailViaPython:", error);
       return {
         success: false,
         error: error.message || "Error enviando email via Python"
@@ -61,15 +61,7 @@ export class EmailService {
   }
 
   static async sendEmail(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
-    console.log("EmailService.sendEmail called with config:", {
-      enabled: config.enabled,
-      smtpHost: config.smtpHost,
-      smtpPort: config.smtpPort,
-      smtpUsername: config.smtpUsername,
-      to: to,
-      subject: subject,
-      useTLS: config.useTLS
-    });
+    console.log("=== INICIO SENDMAIL ===");
     
     // Validar configuración básica
     if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
@@ -86,32 +78,12 @@ export class EmailService {
       };
     }
     
-    // Intentar envío via Python SMTP directamente
-    console.log("Attempting to send email via Python SMTP...");
-    const pythonResult = await this.sendEmailViaPython(config, to, subject, html);
-    
-    if (pythonResult.success) {
-      console.log("Email sent successfully via Python");
-      return pythonResult;
-    }
-    
-    console.log("Python SMTP failed:", pythonResult.error);
-    
-    return {
-      success: false,
-      error: `Error enviando email: ${pythonResult.error}`
-    };
+    return this.sendEmailViaPython(config, to, subject, html);
   }
 
   static async testEmailConfiguration(config: EmailConfig): Promise<{success: boolean, message?: string, error?: string}> {
     try {
-      console.log("Testing email configuration with:", {
-        smtpHost: config.smtpHost,
-        smtpPort: config.smtpPort,
-        smtpUsername: config.smtpUsername,
-        email: config.email,
-        useTLS: config.useTLS
-      });
+      console.log("=== PRUEBA DE EMAIL ===");
       
       if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
         return {
@@ -120,29 +92,28 @@ export class EmailService {
         };
       }
       
-      const testResult = await this.sendEmailViaPython(
+      const testHtml = `
+        <h1>¡Configuración de correo exitosa!</h1>
+        <p>Este es un correo de prueba de News Radar.</p>
+        <p>Su configuración de correo electrónico está funcionando correctamente.</p>
+        <p>Configuración utilizada:</p>
+        <ul>
+          <li>Servidor SMTP: ${config.smtpHost}</li>
+          <li>Puerto: ${config.smtpPort}</li>
+          <li>Usuario: ${config.smtpUsername}</li>
+          <li>TLS: ${config.useTLS ? 'Activado' : 'Desactivado'}</li>
+        </ul>
+        <p>Ahora podrá recibir resúmenes de noticias en este correo.</p>
+        <br>
+        <p>Saludos,<br>Equipo de News Radar</p>
+      `;
+      
+      return this.sendEmailViaPython(
         config,
         config.email,
         "Prueba de configuración de correo - News Radar",
-        `
-          <h1>¡Configuración de correo exitosa!</h1>
-          <p>Este es un correo de prueba de News Radar.</p>
-          <p>Su configuración de correo electrónico está funcionando correctamente.</p>
-          <p>Configuración utilizada:</p>
-          <ul>
-            <li>Servidor SMTP: ${config.smtpHost}</li>
-            <li>Puerto: ${config.smtpPort}</li>
-            <li>Usuario: ${config.smtpUsername}</li>
-            <li>TLS: ${config.useTLS ? 'Activado' : 'Desactivado'}</li>
-          </ul>
-          <p>Ahora podrá recibir resúmenes de noticias en este correo.</p>
-          <br>
-          <p>Saludos,<br>Equipo de News Radar</p>
-        `
+        testHtml
       );
-      
-      console.log("Test email result:", testResult);
-      return testResult;
       
     } catch (error: any) {
       console.error("Error testing email configuration:", error);

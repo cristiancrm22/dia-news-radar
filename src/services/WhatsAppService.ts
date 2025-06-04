@@ -1,5 +1,5 @@
+
 import { WhatsAppConfig } from "@/types/news";
-import { supabase } from "@/integrations/supabase/client";
 
 export interface WhatsAppSendResult {
   success: boolean;
@@ -16,15 +16,15 @@ export class WhatsAppService {
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
   ): Promise<WhatsAppSendResult> {
     
-    onLog?.('info', `Iniciando envío de mensaje WhatsApp a ${phoneNumber}`);
+    onLog?.('info', `=== ENVIANDO WHATSAPP A ${phoneNumber} ===`);
     
     if (!config.enabled) {
-      onLog?.('error', 'WhatsApp no está habilitado en la configuración');
+      onLog?.('error', 'WhatsApp no está habilitado');
       return { success: false, error: 'WhatsApp no habilitado' };
     }
 
     if (!phoneNumber || !message) {
-      onLog?.('error', 'Número de teléfono o mensaje vacío');
+      onLog?.('error', 'Número o mensaje vacío');
       return { success: false, error: 'Datos incompletos' };
     }
 
@@ -33,12 +33,13 @@ export class WhatsAppService {
         onLog?.('info', `Usando Evolution API: ${config.evolutionApiUrl}`);
         
         const cleanNumber = phoneNumber.replace(/\D/g, '');
+        onLog?.('info', `Número limpio: ${cleanNumber}`);
         
         if (cleanNumber.length < 10) {
-          onLog?.('error', `Número de teléfono inválido: ${phoneNumber}. Debe tener al menos 10 dígitos.`);
+          onLog?.('error', `Número inválido: ${cleanNumber}`);
           return { 
             success: false, 
-            error: `Número de teléfono inválido: ${phoneNumber}. Debe tener al menos 10 dígitos.` 
+            error: `Número inválido: ${phoneNumber}` 
           };
         }
         
@@ -51,7 +52,6 @@ export class WhatsAppService {
         }
         
         const instanceName = "SenadoN8N";
-        
         const payload = {
           number: cleanNumber,
           text: message
@@ -59,16 +59,18 @@ export class WhatsAppService {
         
         const apiUrl = `${config.evolutionApiUrl.trim()}/message/sendText/${instanceName}`;
         
-        onLog?.('info', 'Enviando mensaje via Evolution API', { 
-          url: apiUrl, 
-          payload,
-          instanceName 
-        });
+        onLog?.('info', `URL completa: ${apiUrl}`, payload);
         
+        // Timeout más corto para evitar colgadas
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => {
+          onLog?.('error', 'Timeout de 15 segundos alcanzado');
+          controller.abort();
+        }, 15000);
         
         try {
+          onLog?.('info', 'Iniciando fetch...');
+          
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers,
@@ -77,22 +79,23 @@ export class WhatsAppService {
           });
           
           clearTimeout(timeoutId);
+          onLog?.('info', `Respuesta recibida: ${response.status}`);
           
           if (!response.ok) {
             const errorText = await response.text();
-            onLog?.('error', `Error Evolution API HTTP ${response.status}: ${response.statusText}`, errorText);
+            onLog?.('error', `Error HTTP ${response.status}:`, errorText);
             
-            if (response.status === 404 && errorText.includes('instance does not exist')) {
+            if (response.status === 404) {
               return { 
                 success: false, 
-                error: `Instancia "${instanceName}" no encontrada. Verifica el nombre de la instancia en Evolution Manager.` 
+                error: `Instancia "${instanceName}" no encontrada en Evolution API` 
               };
             }
             
-            if (response.status === 400 && errorText.includes('exists":false')) {
+            if (response.status === 400) {
               return { 
                 success: false, 
-                error: `El número ${cleanNumber} no está registrado en WhatsApp o no es válido. Verifique que el número esté correcto y que tenga WhatsApp activo.` 
+                error: `Número ${cleanNumber} no válido o sin WhatsApp` 
               };
             }
             
@@ -103,7 +106,7 @@ export class WhatsAppService {
           }
           
           const result = await response.json();
-          onLog?.('success', 'Mensaje enviado correctamente via Evolution API', result);
+          onLog?.('success', 'WhatsApp enviado correctamente', result);
           
           return { 
             success: true, 
@@ -112,42 +115,25 @@ export class WhatsAppService {
           
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
+          onLog?.('error', `Error en fetch: ${fetchError.message}`);
           
           if (fetchError.name === 'AbortError') {
-            onLog?.('error', 'Timeout: La conexión con Evolution API tardó demasiado (30s)');
-            return { success: false, error: 'Timeout de conexión con Evolution API' };
+            return { success: false, error: 'Timeout de conexión (15s)' };
           }
           
-          throw fetchError;
+          return { success: false, error: `Error de conexión: ${fetchError.message}` };
         }
         
       } else {
-        onLog?.('info', 'Simulando envío via WhatsApp Business API oficial');
-        
+        onLog?.('info', 'Modo simulación activado');
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        onLog?.('success', 'Mensaje simulado enviado correctamente (WhatsApp Business API)');
-        
-        return { 
-          success: true, 
-          messageId: `sim_${Date.now()}` 
-        };
+        onLog?.('success', 'Mensaje simulado enviado');
+        return { success: true, messageId: `sim_${Date.now()}` };
       }
       
     } catch (error: any) {
-      onLog?.('error', `Error al enviar mensaje WhatsApp: ${error.message}`, error);
-      
-      if (error.message.includes('fetch')) {
-        return { 
-          success: false, 
-          error: `Error de conexión: Verifica que la URL de Evolution API sea correcta y que el servidor esté disponible. ${error.message}` 
-        };
-      }
-      
-      return { 
-        success: false, 
-        error: error.message 
-      };
+      onLog?.('error', `Error general: ${error.message}`, error);
+      return { success: false, error: error.message };
     }
   }
 
@@ -159,15 +145,50 @@ export class WhatsAppService {
   ): Promise<WhatsAppSendResult> {
     
     if (!testPhone) {
-      onLog?.('error', 'No se ha especificado un número de teléfono para la prueba');
       return { success: false, error: 'Número de teléfono requerido' };
     }
 
     if (!testMessage) {
-      testMessage = `🤖 Mensaje de prueba de News Radar\n\nConfiguración:\n- Método: ${config.connectionMethod}\n- API URL: ${config.evolutionApiUrl || 'N/A'}\n\n✅ WhatsApp funcionando correctamente!`;
+      testMessage = `🤖 Mensaje de prueba de News Radar\n\n✅ WhatsApp funcionando correctamente!\n\n${new Date().toLocaleString()}`;
     }
 
     return this.sendMessage(config, testPhone, testMessage, onLog);
+  }
+
+  static async requestTodayNews(
+    phoneNumber: string,
+    onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
+  ): Promise<WhatsAppSendResult> {
+    
+    onLog?.('info', `=== ENVIANDO NOTICIAS A ${phoneNumber} ===`);
+    
+    try {
+      const NewsService = (await import('./NewsService')).default;
+      const config = await NewsService.getWhatsAppConfig();
+      
+      if (!config.enabled) {
+        onLog?.('error', 'WhatsApp no habilitado');
+        return { success: false, error: 'WhatsApp no habilitado' };
+      }
+      
+      const todayNews = await NewsService.getNews();
+      onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);
+      
+      let newsMessage: string;
+      if (todayNews.length === 0) {
+        newsMessage = "📰 *NOTICIAS DEL DÍA*\n\n⚠️ No hay noticias disponibles en este momento.\n\nIntentaremos más tarde.\n\n🤖 News Radar";
+        onLog?.('info', 'Sin noticias - enviando mensaje informativo');
+      } else {
+        newsMessage = this.formatNewsForWhatsApp(todayNews);
+        onLog?.('info', `Mensaje formateado con ${todayNews.length} noticias`);
+      }
+      
+      return this.sendMessage(config, phoneNumber, newsMessage, onLog);
+      
+    } catch (error: any) {
+      onLog?.('error', `Error: ${error.message}`, error);
+      return { success: false, error: error.message };
+    }
   }
 
   static async sendScheduledNews(
@@ -175,26 +196,27 @@ export class WhatsAppService {
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
   ): Promise<{ success: boolean; results?: any; error?: string }> {
     
-    onLog?.('info', `Enviando noticias programadas a ${phoneNumbers.length} números`);
+    onLog?.('info', `=== ENVÍO PROGRAMADO A ${phoneNumbers.length} NÚMEROS ===`);
     
     try {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
       if (!config.enabled) {
-        onLog?.('error', 'WhatsApp no está habilitado en la configuración');
-        return { success: false, error: 'WhatsApp no está habilitado' };
+        onLog?.('error', 'WhatsApp no habilitado');
+        return { success: false, error: 'WhatsApp no habilitado' };
       }
       
       const todayNews = await NewsService.getNews();
+      onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);
       
       let newsMessage: string;
       if (todayNews.length === 0) {
-        newsMessage = "📰 *RESUMEN DIARIO DE NOTICIAS*\n\n⚠️ No hay noticias disponibles en este momento.\n\nIntentaremos nuevamente más tarde.\n\n🤖 News Radar";
-        onLog?.('info', 'No hay noticias para enviar, enviando mensaje de "sin noticias"');
+        newsMessage = "📰 *RESUMEN DIARIO*\n\n⚠️ No hay noticias disponibles.\n\n🤖 News Radar";
+        onLog?.('info', 'Sin noticias - mensaje informativo');
       } else {
         newsMessage = this.formatNewsForWhatsApp(todayNews);
-        onLog?.('info', `Preparando envío de ${todayNews.length} noticias`);
+        onLog?.('info', `Mensaje preparado con ${todayNews.length} noticias`);
       }
       
       const results = {
@@ -203,34 +225,28 @@ export class WhatsAppService {
         errors: [] as string[]
       };
       
-      // Usar sendMessage que sabemos que funciona
       for (const phoneNumber of phoneNumbers) {
         try {
-          onLog?.('info', `Enviando noticias a ${phoneNumber}`);
+          onLog?.('info', `Procesando ${phoneNumber}...`);
           
-          const result = await this.sendMessage(
-            config,
-            phoneNumber,
-            newsMessage,
-            onLog
-          );
+          const result = await this.sendMessage(config, phoneNumber, newsMessage, onLog);
           
           if (result.success) {
             results.sent++;
-            onLog?.('success', `Noticias enviadas correctamente a ${phoneNumber}`);
+            onLog?.('success', `✅ Enviado a ${phoneNumber}`);
           } else {
             results.failed++;
             results.errors.push(`${phoneNumber}: ${result.error}`);
-            onLog?.('error', `Error enviando a ${phoneNumber}: ${result.error}`);
+            onLog?.('error', `❌ Falló ${phoneNumber}: ${result.error}`);
           }
         } catch (error: any) {
           results.failed++;
           results.errors.push(`${phoneNumber}: ${error.message}`);
-          onLog?.('error', `Error inesperado enviando a ${phoneNumber}: ${error.message}`);
+          onLog?.('error', `💥 Error ${phoneNumber}: ${error.message}`);
         }
       }
       
-      onLog?.('success', `Proceso completado: ${results.sent} enviados, ${results.failed} fallidos`);
+      onLog?.('success', `=== RESUMEN: ${results.sent} enviados, ${results.failed} fallidos ===`);
       return { 
         success: results.sent > 0, 
         results: {
@@ -242,43 +258,7 @@ export class WhatsAppService {
       };
       
     } catch (error: any) {
-      onLog?.('error', `Error enviando noticias programadas: ${error.message}`, error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  static async requestTodayNews(
-    phoneNumber: string,
-    onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
-  ): Promise<WhatsAppSendResult> {
-    
-    onLog?.('info', `Enviando noticias del día a ${phoneNumber} (ENVÍO REAL)`);
-    
-    try {
-      const NewsService = (await import('./NewsService')).default;
-      const config = await NewsService.getWhatsAppConfig();
-      
-      if (!config.enabled) {
-        onLog?.('error', 'WhatsApp no está habilitado en la configuración');
-        return { success: false, error: 'WhatsApp no está habilitado' };
-      }
-      
-      const todayNews = await NewsService.getNews();
-      
-      let newsMessage: string;
-      if (todayNews.length === 0) {
-        newsMessage = "📰 *NOTICIAS DEL DÍA*\n\n⚠️ No hay noticias disponibles en este momento.\n\nIntentaremos actualizar las noticias más tarde.\n\n🤖 News Radar";
-        onLog?.('info', 'No hay noticias disponibles, enviando mensaje informativo');
-      } else {
-        newsMessage = this.formatNewsForWhatsApp(todayNews);
-        onLog?.('info', `Enviando ${todayNews.length} noticias del día`);
-      }
-      
-      // Usar sendMessage que sabemos que funciona
-      return this.sendMessage(config, phoneNumber, newsMessage, onLog);
-      
-    } catch (error: any) {
-      onLog?.('error', `Error enviando noticias del día: ${error.message}`, error);
+      onLog?.('error', `Error general: ${error.message}`, error);
       return { success: false, error: error.message };
     }
   }
@@ -287,12 +267,12 @@ export class WhatsAppService {
     let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
     
-    news.slice(0, 6).forEach((item, index) => {
+    news.slice(0, 5).forEach((item, index) => {
       message += `*${index + 1}.* ${item.title}\n`;
       if (item.summary) {
-        message += `📝 ${item.summary.substring(0, 120)}...\n`;
+        message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
-      message += `📰 Fuente: ${item.sourceName || 'Desconocida'}\n`;
+      message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
       if (item.sourceUrl) {
         message += `🔗 ${item.sourceUrl}\n`;
       }
@@ -300,7 +280,7 @@ export class WhatsAppService {
     });
     
     message += "━━━━━━━━━━━━━━━━━━━━\n";
-    message += "🤖 Enviado automáticamente por News Radar";
+    message += "🤖 News Radar";
     
     return message;
   }
