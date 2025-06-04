@@ -14,37 +14,33 @@ export class EmailService {
         useTLS: config.useTLS
       });
       
-      // Usar la estructura correcta de parámetros que funciona
-      const requestBody = {
-        config: {
-          smtpHost: config.smtpHost || "smtp.gmail.com",
-          smtpPort: config.smtpPort || 587,
-          smtpUsername: config.smtpUsername,
-          smtpPassword: config.smtpPassword,
-          to: to,
-          subject: subject,
-          html: html,
-          useTLS: config.useTLS !== false
-        }
+      // Usar los parámetros correctos como en el script Python que funciona
+      const pythonArgs = {
+        smtp_host: config.smtpHost || "smtp.gmail.com",
+        smtp_port: config.smtpPort || 587,
+        smtp_user: config.smtpUsername,
+        smtp_pass: config.smtpPassword,
+        to: to,
+        subject: subject,
+        html: html,
+        use_tls: config.useTLS !== false
       };
       
-      console.log("Enviando solicitud al servidor Python:", {
-        url: "http://localhost:8000/send-email",
-        config: {
-          ...requestBody.config,
-          smtpPassword: "[PROTECTED]"
-        }
+      console.log("Enviando email con parámetros Python correctos:", {
+        ...pythonArgs,
+        smtp_pass: "[PROTECTED]"
       });
       
-      const response = await fetch("http://localhost:8000/send-email", {
+      // Llamar al endpoint correcto del servidor Python
+      const response = await fetch("http://localhost:8000/api/email/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(pythonArgs)
       });
       
-      console.log("Respuesta del servidor:", response.status, response.statusText);
+      console.log("Respuesta del servidor Python:", response.status, response.statusText);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -124,7 +120,7 @@ export class EmailService {
         };
       }
       
-      const testResult = await this.sendEmail(
+      const testResult = await this.sendEmailViaPython(
         config,
         config.email,
         "Prueba de configuración de correo - News Radar",

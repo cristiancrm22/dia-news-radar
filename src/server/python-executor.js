@@ -169,6 +169,93 @@ app.get('/api/scraper/csv', (req, res) => {
   }
 });
 
+// Email sending endpoint corregido
+app.post('/api/email/send', async (req, res) => {
+  try {
+    const { smtp_host, smtp_port, smtp_user, smtp_pass, to, subject, html, use_tls } = req.body;
+    
+    console.log('Enviando email via script Python con parámetros:', {
+      smtp_host,
+      smtp_port,
+      smtp_user,
+      to,
+      subject,
+      use_tls
+    });
+    
+    const pythonArgs = [
+      path.join(__dirname, 'send_email.py'),
+      '--smtp-host', smtp_host,
+      '--smtp-port', smtp_port.toString(),
+      '--smtp-user', smtp_user,
+      '--smtp-pass', smtp_pass,
+      '--to', to,
+      '--subject', subject,
+      '--html', html
+    ];
+    
+    if (use_tls) {
+      pythonArgs.push('--use-tls');
+    }
+    
+    console.log('Ejecutando comando Python:', pythonArgs.slice(0, -4).join(' ') + ' [PARÁMETROS PROTEGIDOS]');
+    
+    const pythonProcess = spawn('python3', pythonArgs);
+    
+    let output = '';
+    let errorOutput = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+    
+    pythonProcess.on('close', (code) => {
+      console.log(`Script Python de email terminó con código ${code}`);
+      
+      if (code === 0) {
+        try {
+          const result = JSON.parse(output.trim());
+          res.json(result);
+        } catch (e) {
+          res.json({ 
+            success: true, 
+            message: "Email enviado correctamente",
+            method: "python-smtp"
+          });
+        }
+      } else {
+        console.error('Error en script Python:', errorOutput);
+        res.status(500).json({ 
+          success: false, 
+          error: errorOutput || `Script Python falló con código ${code}`,
+          method: "python-smtp"
+        });
+      }
+    });
+    
+    pythonProcess.on('error', (error) => {
+      console.error('Error ejecutando script Python de email:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        method: "python-smtp"
+      });
+    });
+    
+  } catch (error) {
+    console.error('Error en endpoint de email:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      method: "python-smtp"
+    });
+  }
+});
+
 // Email sending endpoint
 app.post('/send-email', async (req, res) => {
   try {

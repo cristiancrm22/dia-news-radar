@@ -1,4 +1,3 @@
-
 import { WhatsAppConfig } from "@/types/news";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -171,7 +170,6 @@ export class WhatsAppService {
     return this.sendMessage(config, testPhone, testMessage, onLog);
   }
 
-  // Usar la misma función sendMessage para envío programado
   static async sendScheduledNews(
     phoneNumbers: string[],
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -190,12 +188,14 @@ export class WhatsAppService {
       
       const todayNews = await NewsService.getNews();
       
+      let newsMessage: string;
       if (todayNews.length === 0) {
-        onLog?.('info', 'No hay noticias para enviar hoy');
-        return { success: true, results: { message: 'No hay noticias para enviar' } };
+        newsMessage = "📰 *RESUMEN DIARIO DE NOTICIAS*\n\n⚠️ No hay noticias disponibles en este momento.\n\nIntentaremos nuevamente más tarde.\n\n🤖 News Radar";
+        onLog?.('info', 'No hay noticias para enviar, enviando mensaje de "sin noticias"');
+      } else {
+        newsMessage = this.formatNewsForWhatsApp(todayNews);
+        onLog?.('info', `Preparando envío de ${todayNews.length} noticias`);
       }
-      
-      const newsMessage = this.formatNewsForWhatsApp(todayNews);
       
       const results = {
         sent: 0,
@@ -203,7 +203,7 @@ export class WhatsAppService {
         errors: [] as string[]
       };
       
-      // Usar la función sendMessage que sabemos que funciona
+      // Usar sendMessage que sabemos que funciona
       for (const phoneNumber of phoneNumbers) {
         try {
           onLog?.('info', `Enviando noticias a ${phoneNumber}`);
@@ -247,7 +247,6 @@ export class WhatsAppService {
     }
   }
 
-  // Usar la misma función sendMessage para solicitud manual
   static async requestTodayNews(
     phoneNumber: string,
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -266,16 +265,16 @@ export class WhatsAppService {
       
       const todayNews = await NewsService.getNews();
       
+      let newsMessage: string;
       if (todayNews.length === 0) {
-        const noNewsMessage = "📰 *NOTICIAS DEL DÍA*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
-        onLog?.('info', 'Enviando mensaje de "no hay noticias"');
-        return this.sendMessage(config, phoneNumber, noNewsMessage, onLog);
+        newsMessage = "📰 *NOTICIAS DEL DÍA*\n\n⚠️ No hay noticias disponibles en este momento.\n\nIntentaremos actualizar las noticias más tarde.\n\n🤖 News Radar";
+        onLog?.('info', 'No hay noticias disponibles, enviando mensaje informativo');
+      } else {
+        newsMessage = this.formatNewsForWhatsApp(todayNews);
+        onLog?.('info', `Enviando ${todayNews.length} noticias del día`);
       }
       
-      const newsMessage = this.formatNewsForWhatsApp(todayNews);
-      onLog?.('info', 'Enviando noticias reales usando sendMessage');
-      
-      // Usar la función sendMessage que sabemos que funciona
+      // Usar sendMessage que sabemos que funciona
       return this.sendMessage(config, phoneNumber, newsMessage, onLog);
       
     } catch (error: any) {
