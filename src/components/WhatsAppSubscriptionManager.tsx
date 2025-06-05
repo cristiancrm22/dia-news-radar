@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
 import { ScheduledWhatsAppService, WhatsAppSubscription } from "@/services/ScheduledWhatsAppService";
-import { Clock, Plus, Trash2, Edit, UserPlus } from "lucide-react";
+import { Clock, Plus, Trash2, UserPlus, Send } from "lucide-react";
 
 const WhatsAppSubscriptionManager = () => {
   const [subscriptions, setSubscriptions] = useState<WhatsAppSubscription[]>([]);
@@ -21,7 +21,7 @@ const WhatsAppSubscriptionManager = () => {
     isActive: true
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const weekdayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -179,6 +179,36 @@ const WhatsAppSubscriptionManager = () => {
     }
   };
 
+  const sendImmediateNews = async () => {
+    setIsSending(true);
+    try {
+      const result = await ScheduledWhatsAppService.sendNewsToSubscribers();
+      if (result.success) {
+        const results = result.results as any;
+        toast({
+          title: "Envío completado",
+          description: `Enviado a ${results?.sent || 0} de ${results?.total || 0} suscriptores. Errores: ${results?.errors?.length || 0}`
+        });
+        loadSubscriptions(); // Recargar para actualizar las fechas de último envío
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Error al enviar noticias",
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      console.error("Error sending immediate news:", error);
+      toast({
+        title: "Error",
+        description: "Error al enviar las noticias",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const toggleWeekday = (day: number) => {
     const weekdays = newSubscription.weekdays.includes(day)
       ? newSubscription.weekdays.filter(d => d !== day)
@@ -269,9 +299,23 @@ const WhatsAppSubscriptionManager = () => {
               <Clock className="h-5 w-5" />
               Suscripciones Activas ({subscriptions.length})
             </div>
-            <Button onClick={processScheduledMessages} disabled={isLoading} variant="outline">
-              {isLoading ? "Procesando..." : "Procesar Ahora"}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={sendImmediateNews} 
+                disabled={isSending || subscriptions.length === 0} 
+                variant="default"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {isSending ? "Enviando..." : "Enviar Ahora"}
+              </Button>
+              <Button 
+                onClick={processScheduledMessages} 
+                disabled={isLoading} 
+                variant="outline"
+              >
+                {isLoading ? "Procesando..." : "Procesar Programados"}
+              </Button>
+            </div>
           </CardTitle>
           <CardDescription>
             Gestione las suscripciones de envío automático

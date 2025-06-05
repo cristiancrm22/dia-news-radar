@@ -264,12 +264,56 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_subscriptions: {
+        Row: {
+          created_at: string
+          frequency: string
+          id: string
+          is_active: boolean
+          last_sent: string | null
+          phone_number: string
+          scheduled_time: string
+          updated_at: string
+          user_id: string
+          weekdays: number[] | null
+        }
+        Insert: {
+          created_at?: string
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          last_sent?: string | null
+          phone_number: string
+          scheduled_time?: string
+          updated_at?: string
+          user_id: string
+          weekdays?: number[] | null
+        }
+        Update: {
+          created_at?: string
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          last_sent?: string | null
+          phone_number?: string
+          scheduled_time?: string
+          updated_at?: string
+          user_id?: string
+          weekdays?: number[] | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_existing_subscription: {
+        Args: { p_user_id: string; p_phone_number: string }
+        Returns: {
+          id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

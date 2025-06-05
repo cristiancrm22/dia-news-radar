@@ -1,7 +1,5 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppService } from './WhatsAppService';
-import NewsService from './NewsService';
 
 export interface WhatsAppSubscription {
   id?: string;
@@ -9,9 +7,21 @@ export interface WhatsAppSubscription {
   scheduledTime: string;
   isActive: boolean;
   frequency: 'daily' | 'weekly';
-  weekdays?: number[]; // Para frecuencia semanal: 0=domingo, 1=lunes, etc.
+  weekdays?: number[];
   createdAt?: string;
   lastSent?: string;
+}
+
+interface SubscriptionRow {
+  id: string;
+  user_id: string;
+  phone_number: string;
+  scheduled_time: string;
+  is_active: boolean;
+  frequency: 'daily' | 'weekly';
+  weekdays: number[];
+  created_at: string;
+  last_sent?: string;
 }
 
 export class ScheduledWhatsAppService {
@@ -23,18 +33,25 @@ export class ScheduledWhatsAppService {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      // Verificar si ya existe una suscripción para este número
-      const { data: existing } = await supabase
-        .from('whatsapp_subscriptions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('phone_number', subscription.phoneNumber)
-        .single();
+      console.log('Agregando suscripción:', subscription);
 
-      if (existing) {
+      // Verificar si ya existe una suscripción para este número usando RPC
+      const { data: existing, error: existingError } = await supabase
+        .rpc('check_existing_subscription', {
+          p_user_id: user.id,
+          p_phone_number: subscription.phoneNumber
+        });
+
+      if (existingError) {
+        console.error('Error checking existing subscription:', existingError);
+        return { success: false, error: existingError.message };
+      }
+
+      if (existing && existing.length > 0) {
         return { success: false, error: 'Ya existe una suscripción para este número' };
       }
 
+      // Insertar nueva suscripción
       const { data, error } = await supabase
         .from('whatsapp_subscriptions')
         .insert({
@@ -53,17 +70,21 @@ export class ScheduledWhatsAppService {
         return { success: false, error: error.message };
       }
 
+      console.log('Suscripción agregada exitosamente:', data);
+
+      const typedData = data as unknown as SubscriptionRow;
+      
       return { 
         success: true, 
         subscription: {
-          id: data.id,
-          phoneNumber: data.phone_number,
-          scheduledTime: data.scheduled_time,
-          isActive: data.is_active,
-          frequency: data.frequency,
-          weekdays: data.weekdays,
-          createdAt: data.created_at,
-          lastSent: data.last_sent
+          id: typedData.id,
+          phoneNumber: typedData.phone_number,
+          scheduledTime: typedData.scheduled_time,
+          isActive: typedData.is_active,
+          frequency: typedData.frequency,
+          weekdays: typedData.weekdays,
+          createdAt: typedData.created_at,
+          lastSent: typedData.last_sent
         }
       };
     } catch (error: any) {
@@ -79,6 +100,8 @@ export class ScheduledWhatsAppService {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
+      console.log('Obteniendo suscripciones para usuario:', user.id);
+
       const { data, error } = await supabase
         .from('whatsapp_subscriptions')
         .select('*')
@@ -90,7 +113,9 @@ export class ScheduledWhatsAppService {
         return { success: false, error: error.message };
       }
 
-      const subscriptions = data.map(item => ({
+      console.log('Suscripciones obtenidas:', data?.length || 0);
+
+      const subscriptions = (data as unknown as SubscriptionRow[] || []).map((item: SubscriptionRow) => ({
         id: item.id,
         phoneNumber: item.phone_number,
         scheduledTime: item.scheduled_time,
@@ -121,6 +146,8 @@ export class ScheduledWhatsAppService {
       if (updates.frequency !== undefined) updateData.frequency = updates.frequency;
       if (updates.weekdays !== undefined) updateData.weekdays = updates.weekdays;
 
+      console.log('Actualizando suscripción:', id, updateData);
+
       const { error } = await supabase
         .from('whatsapp_subscriptions')
         .update(updateData)
@@ -132,6 +159,7 @@ export class ScheduledWhatsAppService {
         return { success: false, error: error.message };
       }
 
+      console.log('Suscripción actualizada exitosamente');
       return { success: true };
     } catch (error: any) {
       console.error('Error in updateSubscription:', error);
@@ -146,6 +174,8 @@ export class ScheduledWhatsAppService {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
+      console.log('Eliminando suscripción:', id);
+
       const { error } = await supabase
         .from('whatsapp_subscriptions')
         .delete()
@@ -157,6 +187,7 @@ export class ScheduledWhatsAppService {
         return { success: false, error: error.message };
       }
 
+      console.log('Suscripción eliminada exitosamente');
       return { success: true };
     } catch (error: any) {
       console.error('Error in deleteSubscription:', error);
@@ -166,112 +197,23 @@ export class ScheduledWhatsAppService {
 
   static async processScheduledMessages(): Promise<{ success: boolean; results?: any; error?: string }> {
     try {
-      console.log('=== PROCESANDO MENSAJES PROGRAMADOS ===');
+      console.log('=== PROCESAMIENTO MANUAL DE MENSAJES PROGRAMADOS ===');
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        return { success: false, error: 'Usuario no autenticado' };
-      }
-
-      // Obtener todas las suscripciones activas
-      const { data: subscriptions, error } = await supabase
-        .from('whatsapp_subscriptions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // Llamar a la función de Supabase Edge para procesar mensajes programados
+      const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
+        body: { 
+          type: 'whatsapp', 
+          scheduled: true 
+        }
+      });
 
       if (error) {
-        console.error('Error getting active subscriptions:', error);
+        console.error('Error calling edge function:', error);
         return { success: false, error: error.message };
       }
 
-      if (!subscriptions || subscriptions.length === 0) {
-        console.log('No hay suscripciones activas');
-        return { success: true, results: { message: 'No hay suscripciones activas' } };
-      }
-
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5); // HH:MM
-      const currentDay = now.getDay(); // 0=domingo, 1=lunes, etc.
-
-      console.log(`Hora actual: ${currentTime}, Día: ${currentDay}`);
-
-      const results = {
-        sent: 0,
-        skipped: 0,
-        errors: [] as string[]
-      };
-
-      for (const subscription of subscriptions) {
-        try {
-          console.log(`Procesando suscripción ${subscription.id} - ${subscription.phone_number}`);
-          
-          // Verificar si es el momento de enviar
-          const shouldSend = this.shouldSendMessage(subscription, currentTime, currentDay);
-          
-          if (!shouldSend) {
-            console.log(`Saltando suscripción ${subscription.id} - no es el momento`);
-            results.skipped++;
-            continue;
-          }
-
-          // Obtener configuración de WhatsApp
-          const whatsappConfig = await NewsService.getWhatsAppConfig();
-          if (!whatsappConfig.enabled) {
-            console.log('WhatsApp no está habilitado');
-            results.errors.push('WhatsApp no habilitado');
-            continue;
-          }
-
-          // Obtener noticias
-          const todayNews = await NewsService.getNews();
-          console.log(`Noticias obtenidas: ${todayNews.length}`);
-
-          let newsMessage: string;
-          if (todayNews.length === 0) {
-            newsMessage = "📰 *RESUMEN PROGRAMADO*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
-          } else {
-            newsMessage = this.formatNewsForWhatsApp(todayNews);
-          }
-
-          // Enviar mensaje
-          const result = await WhatsAppService.sendMessage(
-            whatsappConfig,
-            subscription.phone_number,
-            newsMessage
-          );
-
-          if (result.success) {
-            // Actualizar última fecha de envío
-            await supabase
-              .from('whatsapp_subscriptions')
-              .update({ last_sent: now.toISOString() })
-              .eq('id', subscription.id);
-
-            results.sent++;
-            console.log(`✅ Mensaje enviado a ${subscription.phone_number}`);
-          } else {
-            results.errors.push(`${subscription.phone_number}: ${result.error}`);
-            console.error(`❌ Error enviando a ${subscription.phone_number}: ${result.error}`);
-          }
-
-        } catch (error: any) {
-          results.errors.push(`${subscription.phone_number}: ${error.message}`);
-          console.error(`💥 Error procesando ${subscription.phone_number}:`, error);
-        }
-      }
-
-      console.log(`=== RESUMEN: ${results.sent} enviados, ${results.skipped} saltados, ${results.errors.length} errores ===`);
-      
-      return { 
-        success: true,
-        results: {
-          sent: results.sent,
-          skipped: results.skipped,
-          errors: results.errors,
-          totalSubscriptions: subscriptions.length
-        }
-      };
+      console.log('Resultado del procesamiento:', data);
+      return { success: true, results: data.results };
 
     } catch (error: any) {
       console.error('Error in processScheduledMessages:', error);
@@ -279,28 +221,90 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  private static shouldSendMessage(subscription: any, currentTime: string, currentDay: number): boolean {
-    // Verificar hora
-    if (subscription.scheduled_time !== currentTime) {
-      return false;
-    }
+  static async sendNewsToSubscribers(): Promise<{ success: boolean; results?: any; error?: string }> {
+    try {
+      console.log('=== ENVÍO INMEDIATO A SUSCRIPTORES ===');
+      
+      // Obtener todas las suscripciones activas
+      const subscriptionsResult = await this.getSubscriptions();
+      if (!subscriptionsResult.success || !subscriptionsResult.subscriptions) {
+        return { success: false, error: 'No se pudieron obtener las suscripciones' };
+      }
 
-    // Para frecuencia diaria, enviar todos los días
-    if (subscription.frequency === 'daily') {
-      return true;
-    }
+      const activeSubscriptions = subscriptionsResult.subscriptions.filter(sub => sub.isActive);
+      
+      if (activeSubscriptions.length === 0) {
+        return { success: false, error: 'No hay suscripciones activas' };
+      }
 
-    // Para frecuencia semanal, verificar días de la semana
-    if (subscription.frequency === 'weekly') {
-      const weekdays = subscription.weekdays || [];
-      return weekdays.includes(currentDay);
-    }
+      // Obtener noticias del día
+      let news: any[] = [];
+      try {
+        const response = await fetch("http://localhost:8000/api/news/today");
+        if (response.ok) {
+          const data = await response.json();
+          news = data.news || [];
+        }
+      } catch (error) {
+        console.log('Error obteniendo noticias, usando fallback');
+      }
 
-    return false;
+      // Formatear mensaje
+      let message: string;
+      if (news.length === 0) {
+        message = "📰 *RESUMEN DE NOTICIAS*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
+      } else {
+        message = this.formatNewsForWhatsApp(news);
+      }
+
+      let sent = 0;
+      let errors: string[] = [];
+
+      // Enviar a cada suscriptor
+      for (const subscription of activeSubscriptions) {
+        try {
+          const result = await WhatsAppService.sendMessage(
+            {
+              enabled: true,
+              phoneNumber: subscription.phoneNumber,
+              apiKey: '',
+              connectionMethod: 'evolution',
+              evolutionApiUrl: ''
+            },
+            subscription.phoneNumber,
+            message,
+            (type, msg) => console.log(`${type}: ${msg}`)
+          );
+
+          if (result.success) {
+            sent++;
+            // Actualizar última fecha de envío
+            await this.updateSubscription(subscription.id!, { lastSent: new Date().toISOString() });
+          } else {
+            errors.push(`${subscription.phoneNumber}: ${result.error}`);
+          }
+        } catch (error: any) {
+          errors.push(`${subscription.phoneNumber}: ${error.message}`);
+        }
+      }
+
+      return {
+        success: true,
+        results: {
+          sent,
+          total: activeSubscriptions.length,
+          errors
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error in sendNewsToSubscribers:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   private static formatNewsForWhatsApp(news: any[]): string {
-    let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
+    let message = "📰 *RESUMEN DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
     
     news.slice(0, 5).forEach((item, index) => {
@@ -309,14 +313,14 @@ export class ScheduledWhatsAppService {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
       message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
-      if (item.sourceUrl) {
+      if (item.sourceUrl && item.sourceUrl !== "#") {
         message += `🔗 ${item.sourceUrl}\n`;
       }
       message += "\n";
     });
     
     message += "━━━━━━━━━━━━━━━━━━━━\n";
-    message += "🤖 Enviado automáticamente por News Radar";
+    message += "🤖 Enviado por News Radar";
     
     return message;
   }

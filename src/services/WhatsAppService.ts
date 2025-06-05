@@ -32,100 +32,123 @@ export class WhatsAppService {
       if (config.connectionMethod === "evolution" && config.evolutionApiUrl) {
         onLog?.('info', `Usando Evolution API: ${config.evolutionApiUrl}`);
         
-        const cleanNumber = phoneNumber.replace(/\D/g, '');
-        onLog?.('info', `Número limpio: ${cleanNumber}`);
+        // Limpiar y validar número
+        let cleanNumber = phoneNumber.replace(/\D/g, '');
         
-        if (cleanNumber.length < 10) {
-          onLog?.('error', `Número inválido: ${cleanNumber}`);
+        // Si no empieza con código de país, agregar 54 (Argentina)
+        if (!cleanNumber.startsWith('54') && cleanNumber.length >= 10) {
+          cleanNumber = '54' + cleanNumber;
+        }
+        
+        onLog?.('info', `Número procesado: ${phoneNumber} -> ${cleanNumber}`);
+        
+        if (cleanNumber.length < 12) {
+          onLog?.('error', `Número inválido: ${cleanNumber} (debe tener al menos 12 dígitos con código de país)`);
           return { 
             success: false, 
-            error: `Número inválido: ${phoneNumber}` 
+            error: `Número inválido: ${phoneNumber}. Debe incluir código de país (ej: +5491123456789)` 
           };
         }
         
         const headers: Record<string, string> = {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         };
         
         if (config.apiKey) {
           headers['apikey'] = config.apiKey;
+          headers['Authorization'] = `Bearer ${config.apiKey}`;
         }
         
         const instanceName = "SenadoN8N";
         const payload = {
           number: cleanNumber,
-          text: message
+          textMessage: {
+            text: message
+          }
         };
         
-        const apiUrl = `${config.evolutionApiUrl.trim()}/message/sendText/${instanceName}`;
+        // URLs alternativas para probar
+        const apiUrls = [
+          `${config.evolutionApiUrl.trim()}/message/sendText/${instanceName}`,
+          `${config.evolutionApiUrl.trim()}/message/send-text/${instanceName}`,
+          `${config.evolutionApiUrl.trim()}/send-message/${instanceName}`
+        ];
         
-        onLog?.('info', `URL completa: ${apiUrl}`, payload);
+        onLog?.('info', `Probando envío con payload:`, payload);
         
-        // Timeout más corto para evitar colgadas
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          onLog?.('error', 'Timeout de 15 segundos alcanzado');
-          controller.abort();
-        }, 15000);
-        
-        try {
-          onLog?.('info', 'Iniciando fetch...');
-          
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          onLog?.('info', `Respuesta recibida: ${response.status}`);
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            onLog?.('error', `Error HTTP ${response.status}:`, errorText);
+        // Intentar con diferentes URLs
+        for (const apiUrl of apiUrls) {
+          try {
+            onLog?.('info', `Intentando URL: ${apiUrl}`);
             
-            if (response.status === 404) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+              onLog?.('error', 'Timeout de 20 segundos alcanzado');
+              controller.abort();
+            }, 20000);
+            
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(payload),
+              signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            onLog?.('info', `Respuesta recibida: ${response.status} ${response.statusText}`);
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              onLog?.('error', `Error HTTP ${response.status}:`, errorText);
+              
+              // Si es 404, probar siguiente URL
+              if (response.status === 404) {
+                continue;
+              }
+              
+              if (response.status === 400) {
+                return { 
+                  success: false, 
+                  error: `Número ${cleanNumber} no válido o sin WhatsApp` 
+                };
+              }
+              
               return { 
                 success: false, 
-                error: `Instancia "${instanceName}" no encontrada en Evolution API` 
+                error: `Error Evolution API: ${response.status} - ${errorText}` 
               };
             }
             
-            if (response.status === 400) {
-              return { 
-                success: false, 
-                error: `Número ${cleanNumber} no válido o sin WhatsApp` 
-              };
-            }
+            const result = await response.json();
+            onLog?.('success', 'WhatsApp enviado correctamente', result);
             
             return { 
-              success: false, 
-              error: `Error Evolution API: ${response.status} - ${errorText}` 
+              success: true, 
+              messageId: result.key?.id || result.messageId || result.id
             };
+            
+          } catch (fetchError: any) {
+            clearTimeout(timeoutId);
+            onLog?.('error', `Error en fetch con ${apiUrl}: ${fetchError.message}`);
+            
+            if (fetchError.name === 'AbortError') {
+              return { success: false, error: 'Timeout de conexión (20s)' };
+            }
+            
+            // Si no es el último URL, continuar
+            if (apiUrl !== apiUrls[apiUrls.length - 1]) {
+              continue;
+            }
+            
+            return { success: false, error: `Error de conexión: ${fetchError.message}` };
           }
-          
-          const result = await response.json();
-          onLog?.('success', 'WhatsApp enviado correctamente', result);
-          
-          return { 
-            success: true, 
-            messageId: result.key?.id || result.messageId 
-          };
-          
-        } catch (fetchError: any) {
-          clearTimeout(timeoutId);
-          onLog?.('error', `Error en fetch: ${fetchError.message}`);
-          
-          if (fetchError.name === 'AbortError') {
-            return { success: false, error: 'Timeout de conexión (15s)' };
-          }
-          
-          return { success: false, error: `Error de conexión: ${fetchError.message}` };
         }
         
+        return { success: false, error: 'No se pudo conectar con ningún endpoint de Evolution API' };
+        
       } else {
-        onLog?.('info', 'Modo simulación activado');
+        onLog?.('info', 'Modo simulación activado - WhatsApp no configurado');
         await new Promise(resolve => setTimeout(resolve, 1000));
         onLog?.('success', 'Mensaje simulado enviado');
         return { success: true, messageId: `sim_${Date.now()}` };

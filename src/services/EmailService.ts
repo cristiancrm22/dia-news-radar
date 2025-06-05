@@ -1,7 +1,39 @@
+
 import { EmailConfig } from "@/types/news";
+import { supabase } from "@/integrations/supabase/client";
 
 export class EmailService {
   
+  static async sendEmailViaResend(to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
+    try {
+      console.log("=== ENVÍO EMAIL VIA RESEND ===");
+      console.log("Datos del email:", { to, subject });
+      
+      const { data, error } = await supabase.functions.invoke('send-email-resend', {
+        body: {
+          to: to,
+          subject: subject,
+          html: html
+        }
+      });
+
+      if (error) {
+        console.error("Error del edge function:", error);
+        throw error;
+      }
+
+      console.log("Resultado exitoso:", data);
+      return data;
+      
+    } catch (error: any) {
+      console.error("Error completo en sendEmailViaResend:", error);
+      return {
+        success: false,
+        error: error.message || "Error enviando email via Resend"
+      };
+    }
+  }
+
   static async sendEmailViaPython(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
     try {
       console.log("=== ENVÍO EMAIL VIA PYTHON ===");
@@ -63,18 +95,28 @@ export class EmailService {
   static async sendEmail(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
     console.log("=== INICIO SENDMAIL ===");
     
-    // Validar configuración básica
-    if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
-      return {
-        success: false,
-        error: "Configuración de email incompleta. Verifique SMTP host, usuario y contraseña."
-      };
-    }
-    
     if (!to || !subject) {
       return {
         success: false,
         error: "Destinatario y asunto son requeridos."
+      };
+    }
+    
+    // Primero intentar con Resend (más confiable)
+    console.log("Intentando envío con Resend...");
+    const resendResult = await this.sendEmailViaResend(to, subject, html);
+    
+    if (resendResult.success) {
+      return resendResult;
+    }
+    
+    console.log("Resend falló, intentando con Python/SMTP...");
+    
+    // Si Resend falla, intentar con Python/SMTP como fallback
+    if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
+      return {
+        success: false,
+        error: "Configuración de email incompleta y Resend no disponible. Verifique SMTP host, usuario y contraseña."
       };
     }
     
@@ -85,22 +127,15 @@ export class EmailService {
     try {
       console.log("=== PRUEBA DE EMAIL ===");
       
-      if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
-        return {
-          success: false,
-          error: "Configuración incompleta. Faltan: servidor SMTP, usuario o contraseña."
-        };
-      }
-      
       const testHtml = `
         <h1>¡Configuración de correo exitosa!</h1>
         <p>Este es un correo de prueba de News Radar.</p>
         <p>Su configuración de correo electrónico está funcionando correctamente.</p>
         <p>Configuración utilizada:</p>
         <ul>
-          <li>Servidor SMTP: ${config.smtpHost}</li>
-          <li>Puerto: ${config.smtpPort}</li>
-          <li>Usuario: ${config.smtpUsername}</li>
+          <li>Servidor SMTP: ${config.smtpHost || 'Resend'}</li>
+          <li>Puerto: ${config.smtpPort || 'N/A'}</li>
+          <li>Usuario: ${config.smtpUsername || 'Resend API'}</li>
           <li>TLS: ${config.useTLS ? 'Activado' : 'Desactivado'}</li>
         </ul>
         <p>Ahora podrá recibir resúmenes de noticias en este correo.</p>
@@ -108,7 +143,7 @@ export class EmailService {
         <p>Saludos,<br>Equipo de News Radar</p>
       `;
       
-      return this.sendEmailViaPython(
+      return this.sendEmail(
         config,
         config.email,
         "Prueba de configuración de correo - News Radar",

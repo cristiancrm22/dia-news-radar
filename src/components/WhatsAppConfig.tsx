@@ -44,10 +44,15 @@ const WhatsAppConfig = () => {
     loadConfig();
   }, []);
 
-  const handleEnabledChange = (enabled: boolean) => {
+  const handleEnabledChange = async (enabled: boolean) => {
     const newConfig = { ...config, enabled };
     setConfig(newConfig);
-    NewsService.updateWhatsAppConfig(newConfig);
+    try {
+      await NewsService.updateWhatsAppConfig(newConfig);
+      console.log("Config saved after enabled change");
+    } catch (error) {
+      console.error("Error saving config:", error);
+    }
   };
 
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,25 +65,46 @@ const WhatsAppConfig = () => {
     setConfig(newConfig);
   };
 
-  const handleConnectionMethodChange = (value: "official" | "evolution" | "businesscloud") => {
+  const handleConnectionMethodChange = async (value: "official" | "evolution" | "businesscloud") => {
     const newConfig = { ...config, connectionMethod: value };
     setConfig(newConfig);
-    NewsService.updateWhatsAppConfig(newConfig);
+    try {
+      await NewsService.updateWhatsAppConfig(newConfig);
+      console.log("Config saved after connection method change");
+    } catch (error) {
+      console.error("Error saving config:", error);
+    }
   };
 
-  const handleEvolutionApiUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEvolutionApiUrlChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newConfig = { ...config, evolutionApiUrl: e.target.value };
     setConfig(newConfig);
     console.log("Evolution API URL changed to:", e.target.value);
+    
+    try {
+      await NewsService.updateWhatsAppConfig(newConfig);
+      console.log("Evolution API URL saved automatically");
+    } catch (error) {
+      console.error("Error saving Evolution API URL:", error);
+    }
   };
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     console.log("Saving WhatsApp config:", config);
-    NewsService.updateWhatsAppConfig(config);
-    toast({
-      title: "Configuración guardada",
-      description: "La configuración de WhatsApp se ha guardado correctamente"
-    });
+    try {
+      await NewsService.updateWhatsAppConfig(config);
+      toast({
+        title: "Configuración guardada",
+        description: "La configuración de WhatsApp se ha guardado correctamente"
+      });
+    } catch (error) {
+      console.error("Error saving config:", error);
+      toast({
+        title: "Error",
+        description: "Error al guardar la configuración",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleTestMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -225,7 +251,7 @@ const WhatsAppConfig = () => {
                         onChange={handleEvolutionApiUrlChange}
                       />
                       <p className="text-xs text-muted-foreground">
-                        URL completa del servidor Evolution API
+                        URL completa del servidor Evolution API (se guarda automáticamente)
                       </p>
                     </div>
                     

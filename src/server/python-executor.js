@@ -169,6 +169,46 @@ app.get('/api/scraper/csv', (req, res) => {
   }
 });
 
+// Nuevo endpoint para obtener noticias del día
+app.get('/api/news/today', async (req, res) => {
+  try {
+    console.log('=== OBTENIENDO NOTICIAS DEL DÍA ===');
+    
+    // Simular obtención de noticias (aquí puedes integrar tu lógica real)
+    const mockNews = [
+      {
+        id: 1,
+        title: "Kicillof anuncia nuevas medidas económicas para Buenos Aires",
+        summary: "El gobernador bonaerense presentó un paquete de medidas destinadas a fortalecer la economía provincial.",
+        date: new Date().toISOString(),
+        sourceUrl: "https://www.ejemplo.com/noticia1",
+        sourceName: "La Nación"
+      },
+      {
+        id: 2,
+        title: "Magario se reúne con intendentes del conurbano",
+        summary: "La vicegobernadora coordinó acciones con los jefes comunales para mejorar la gestión local.",
+        date: new Date().toISOString(),
+        sourceUrl: "https://www.ejemplo.com/noticia2",
+        sourceName: "Clarín"
+      }
+    ];
+    
+    res.json({
+      success: true,
+      news: mockNews,
+      count: mockNews.length
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo noticias:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Email sending endpoint - CORREGIDO
 app.post('/api/email/send', async (req, res) => {
   try {

@@ -87,9 +87,14 @@ const TWITTER_USERS_KEY = 'news_radar_twitter_users';
 
 class NewsService {
   private static currentUserId: string | null = null;
+  private static user: any = null;
 
   static setUserId(userId: string | null) {
     this.currentUserId = userId;
+  }
+
+  static setUser(user: any) {
+    this.user = user;
   }
 
   /**
@@ -239,35 +244,113 @@ class NewsService {
   // Get WhatsApp config from database or localStorage
   static async getWhatsAppConfig(): Promise<WhatsAppConfig> {
     try {
-      if (this.currentUserId) {
-        return await DatabaseService.getUserWhatsAppConfig(this.currentUserId);
-      } else {
-        const savedConfig = localStorage.getItem(WHATSAPP_CONFIG_KEY);
-        if (savedConfig) {
-          const parsedConfig = JSON.parse(savedConfig);
-          if (!parsedConfig.connectionMethod) {
-            parsedConfig.connectionMethod = "official";
-          }
-          return parsedConfig;
-        }
-        return defaultWhatsAppConfig;
+      if (!this.user) {
+        return {
+          enabled: false,
+          phoneNumber: "",
+          apiKey: "",
+          connectionMethod: "evolution",
+          evolutionApiUrl: ""
+        };
       }
+
+      const { data, error } = await supabase
+        .from('user_whatsapp_configs')
+        .select('*')
+        .eq('user_id', this.user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching WhatsApp config:', error);
+        throw error;
+      }
+
+      if (!data) {
+        return {
+          enabled: false,
+          phoneNumber: "",
+          apiKey: "",
+          connectionMethod: "evolution",
+          evolutionApiUrl: ""
+        };
+      }
+
+      return {
+        enabled: data.is_active || false,
+        phoneNumber: data.phone_number || "",
+        apiKey: data.api_key || "",
+        connectionMethod: data.connection_method || "evolution",
+        evolutionApiUrl: data.evolution_api_url || ""
+      };
     } catch (error) {
-      console.error("Error loading WhatsApp config:", error);
-      return defaultWhatsAppConfig;
+      console.error('Error getting WhatsApp config:', error);
+      return {
+        enabled: false,
+        phoneNumber: "",
+        apiKey: "",
+        connectionMethod: "evolution",
+        evolutionApiUrl: ""
+      };
     }
   }
 
   // Update WhatsApp config in database or localStorage
   static async updateWhatsAppConfig(config: WhatsAppConfig): Promise<void> {
     try {
-      if (this.currentUserId) {
-        await DatabaseService.updateUserWhatsAppConfig(config, this.currentUserId);
-      } else {
-        localStorage.setItem(WHATSAPP_CONFIG_KEY, JSON.stringify(config));
+      if (!this.user) {
+        throw new Error('Usuario no autenticado');
       }
+
+      console.log('Updating WhatsApp config for user:', this.user.id, 'with config:', config);
+      
+      // Primero verificar si ya existe una configuración
+      const { data: existingConfig, error: fetchError } = await supabase
+        .from('user_whatsapp_configs')
+        .select('*')
+        .eq('user_id', this.user.id)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error fetching existing config:', fetchError);
+        throw fetchError;
+      }
+
+      const configData = {
+        user_id: this.user.id,
+        phone_number: config.phoneNumber || '',
+        api_key: config.apiKey || '',
+        connection_method: config.connectionMethod || 'official',
+        evolution_api_url: config.evolutionApiUrl || null,
+        is_active: config.enabled || false,
+        updated_at: new Date().toISOString()
+      };
+
+      if (existingConfig) {
+        // Actualizar configuración existente
+        const { error: updateError } = await supabase
+          .from('user_whatsapp_configs')
+          .update(configData)
+          .eq('user_id', this.user.id);
+
+        if (updateError) {
+          console.error('Error updating WhatsApp config:', updateError);
+          throw updateError;
+        }
+      } else {
+        // Crear nueva configuración
+        const { error: insertError } = await supabase
+          .from('user_whatsapp_configs')
+          .insert([configData]);
+
+        if (insertError) {
+          console.error('Error inserting WhatsApp config:', insertError);
+          throw insertError;
+        }
+      }
+
+      console.log('WhatsApp config updated successfully');
     } catch (error) {
-      console.error("Error updating WhatsApp config:", error);
+      console.error('Error updating WhatsApp config:', error);
       throw error;
     }
   }
