@@ -100,6 +100,52 @@ export class EmailService {
     }
   }
 
+  // Método para prueba de configuración de email
+  static async testEmailConfiguration(config: any): Promise<{ success: boolean; message: string; error?: string }> {
+    try {
+      return await this.sendTestEmail({
+        to: config.email,
+        subject: "Prueba de Configuración - News Radar",
+        content: "Esta es una prueba de configuración de correo electrónico desde News Radar.",
+        smtpHost: config.smtpHost,
+        smtpPort: config.smtpPort,
+        smtpUsername: config.smtpUsername,
+        smtpPassword: config.smtpPassword,
+        useTLS: config.useTLS
+      });
+    } catch (error: any) {
+      console.error("Error en testEmailConfiguration:", error);
+      return {
+        success: false,
+        message: "Error al probar configuración de email",
+        error: error.message || "Error desconocido"
+      };
+    }
+  }
+
+  // Método para enviar email general
+  static async sendEmail(config: any, to: string, subject: string, html: string): Promise<{ success: boolean; message: string; error?: string }> {
+    try {
+      return await this.sendTestEmail({
+        to: to,
+        subject: subject,
+        content: html,
+        smtpHost: config.smtpHost,
+        smtpPort: config.smtpPort,
+        smtpUsername: config.smtpUsername,
+        smtpPassword: config.smtpPassword,
+        useTLS: config.useTLS
+      });
+    } catch (error: any) {
+      console.error("Error en sendEmail:", error);
+      return {
+        success: false,
+        message: "Error al enviar email",
+        error: error.message || "Error desconocido"
+      };
+    }
+  }
+
   static async sendScheduledNews(emailConfig: any, newsContent: string): Promise<{ success: boolean; message: string }> {
     try {
       const htmlContent = `

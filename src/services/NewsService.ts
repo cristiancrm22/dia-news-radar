@@ -1,3 +1,4 @@
+
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings, PythonScriptExecutionStatus } from "@/types/news";
 import PythonNewsAdapter, { 
   fetchNewsFromPythonScript, 
@@ -9,6 +10,7 @@ import PythonNewsAdapter, {
 import { DatabaseService } from './DatabaseService';
 import { toast } from "sonner";
 import { EmailService } from './EmailService';
+import { supabase } from "@/integrations/supabase/client";
 
 // Configuration - REAL MODE ONLY
 const USE_MOCK_DATA = false;
