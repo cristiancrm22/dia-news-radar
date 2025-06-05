@@ -277,11 +277,17 @@ class NewsService {
         };
       }
 
+      // Ensure connection method is valid
+      const validConnectionMethods = ["official", "evolution", "businesscloud"] as const;
+      const connectionMethod = validConnectionMethods.includes(data.connection_method as any) 
+        ? data.connection_method as "official" | "evolution" | "businesscloud"
+        : "evolution";
+
       return {
         enabled: data.is_active || false,
         phoneNumber: data.phone_number || "",
         apiKey: data.api_key || "",
-        connectionMethod: data.connection_method || "evolution",
+        connectionMethod: connectionMethod,
         evolutionApiUrl: data.evolution_api_url || ""
       };
     } catch (error) {
