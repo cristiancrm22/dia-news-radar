@@ -15,7 +15,7 @@ export interface EmailTestRequest {
 export class EmailService {
   static async sendTestEmail(emailData: EmailTestRequest): Promise<{ success: boolean; message: string; error?: string }> {
     try {
-      console.log("Enviando email de prueba con datos:", emailData);
+      console.log("Enviando email de prueba usando Python script:", emailData);
 
       // Preparar el HTML del email
       const htmlContent = `
@@ -54,39 +54,41 @@ export class EmailService {
         </html>
       `;
 
-      // Llamar a la función edge de Resend
-      const { data, error } = await supabase.functions.invoke('send-email-resend', {
-        body: {
+      // Llamar al endpoint del servidor Python
+      const response = await fetch('http://localhost:8000/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          smtp_host: emailData.smtpHost || 'smtp.gmail.com',
+          smtp_port: emailData.smtpPort || 587,
+          smtp_user: emailData.smtpUsername,
+          smtp_pass: emailData.smtpPassword,
           to: emailData.to,
           subject: emailData.subject || "Prueba de Email - News Radar",
           html: htmlContent,
-          from: "News Radar <noreply@resend.dev>"
-        }
+          use_tls: emailData.useTLS !== false
+        })
       });
 
-      console.log("Respuesta de la función edge:", { data, error });
-
-      if (error) {
-        console.error("Error en la función edge:", error);
-        return {
-          success: false,
-          message: "Error al enviar email",
-          error: error.message || "Error desconocido"
-        };
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
       }
 
-      if (data && data.success) {
-        console.log("Email enviado exitosamente:", data);
+      const result = await response.json();
+      console.log("Respuesta del servidor Python:", result);
+
+      if (result.success) {
         return {
           success: true,
-          message: data.message || "Email enviado correctamente"
+          message: result.message || "Email enviado correctamente"
         };
       } else {
-        console.error("Error en la respuesta:", data);
         return {
           success: false,
           message: "Error al enviar email",
-          error: data?.error || "Respuesta inesperada del servidor"
+          error: result.error || "Error desconocido"
         };
       }
 
@@ -182,23 +184,37 @@ export class EmailService {
         </html>
       `;
 
-      const { data, error } = await supabase.functions.invoke('send-email-resend', {
-        body: {
+      const response = await fetch('http://localhost:8000/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          smtp_host: emailConfig.smtpHost || 'smtp.gmail.com',
+          smtp_port: emailConfig.smtpPort || 587,
+          smtp_user: emailConfig.smtpUsername,
+          smtp_pass: emailConfig.smtpPassword,
           to: emailConfig.email,
           subject: `Noticias del día - ${new Date().toLocaleDateString('es-ES')}`,
           html: htmlContent,
-          from: "News Radar <noticias@resend.dev>"
-        }
+          use_tls: emailConfig.useTLS !== false
+        })
       });
 
-      if (error) {
-        throw error;
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
       }
 
-      return {
-        success: true,
-        message: "Noticias enviadas por email correctamente"
-      };
+      const result = await response.json();
+
+      if (result.success) {
+        return {
+          success: true,
+          message: "Noticias enviadas por email correctamente"
+        };
+      } else {
+        throw new Error(result.error || "Error en el envío");
+      }
 
     } catch (error: any) {
       console.error("Error al enviar noticias por email:", error);

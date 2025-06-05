@@ -285,7 +285,7 @@ export class DatabaseService {
     }
   }
 
-  // WhatsApp config methods - FIXED
+  // WhatsApp config methods - CORREGIDO
   static async getUserWhatsAppConfig(userId?: string): Promise<WhatsAppConfig> {
     const currentUserId = userId || await this.getCurrentUserId();
     
@@ -318,32 +318,38 @@ export class DatabaseService {
     
     console.log("Updating WhatsApp config for user:", currentUserId, "with config:", config);
     
-    const configData = {
-      user_id: currentUserId,
-      phone_number: config.phoneNumber,
-      api_key: config.apiKey,
-      connection_method: config.connectionMethod,
-      evolution_api_url: config.evolutionApiUrl,
-      is_active: config.enabled,
-      updated_at: new Date().toISOString()
-    };
+    try {
+      const configData = {
+        user_id: currentUserId,
+        phone_number: config.phoneNumber || "",
+        api_key: config.apiKey || "",
+        connection_method: config.connectionMethod || "official",
+        evolution_api_url: config.evolutionApiUrl || "",
+        is_active: config.enabled || false,
+        updated_at: new Date().toISOString()
+      };
 
-    console.log("Config data to upsert:", configData);
+      console.log("Config data to upsert:", configData);
 
-    const { data, error } = await supabase
-      .from('user_whatsapp_configs')
-      .upsert(configData, {
-        onConflict: 'user_id'
-      })
-      .select();
+      const { data, error } = await supabase
+        .from('user_whatsapp_configs')
+        .upsert(configData, {
+          onConflict: 'user_id'
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error("Error updating WhatsApp config:", error);
-      throw error;
+      if (error) {
+        console.error("Error updating WhatsApp config:", error);
+        throw error;
+      }
+
+      console.log("WhatsApp config updated successfully:", data);
+      return data;
+    } catch (error: any) {
+      console.error("Exception in updateUserWhatsAppConfig:", error);
+      throw new Error(`Error al actualizar configuración de WhatsApp: ${error.message}`);
     }
-
-    console.log("WhatsApp config updated successfully:", data);
-    return data;
   }
 
   // Email config methods

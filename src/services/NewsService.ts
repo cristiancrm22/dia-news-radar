@@ -1,4 +1,3 @@
-
 import { NewsItem, NewsSource, WhatsAppConfig, EmailConfig, SearchSettings, PythonScriptExecutionStatus } from "@/types/news";
 import PythonNewsAdapter, { 
   fetchNewsFromPythonScript, 
@@ -244,121 +243,27 @@ class NewsService {
   }
 
   // Get WhatsApp config from database or localStorage
-  static async getWhatsAppConfig(): Promise<WhatsAppConfig> {
+  static async getWhatsAppConfig(userId?: string): Promise<WhatsAppConfig> {
     try {
-      if (!this.user) {
-        return {
-          enabled: false,
-          phoneNumber: "",
-          apiKey: "",
-          connectionMethod: "evolution",
-          evolutionApiUrl: ""
-        };
-      }
-
-      const { data, error } = await supabase
-        .from('user_whatsapp_configs')
-        .select('*')
-        .eq('user_id', this.user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching WhatsApp config:', error);
-        throw error;
-      }
-
-      if (!data) {
-        return {
-          enabled: false,
-          phoneNumber: "",
-          apiKey: "",
-          connectionMethod: "evolution",
-          evolutionApiUrl: ""
-        };
-      }
-
-      // Ensure connection method is valid
-      const validConnectionMethods = ["official", "evolution", "businesscloud"] as const;
-      const connectionMethod = validConnectionMethods.includes(data.connection_method as any) 
-        ? data.connection_method as "official" | "evolution" | "businesscloud"
-        : "evolution";
-
-      return {
-        enabled: data.is_active || false,
-        phoneNumber: data.phone_number || "",
-        apiKey: data.api_key || "",
-        connectionMethod: connectionMethod,
-        evolutionApiUrl: data.evolution_api_url || ""
-      };
+      return await DatabaseService.getUserWhatsAppConfig(userId);
     } catch (error) {
-      console.error('Error getting WhatsApp config:', error);
+      console.error("Error getting WhatsApp config:", error);
       return {
         enabled: false,
         phoneNumber: "",
         apiKey: "",
-        connectionMethod: "evolution",
+        connectionMethod: "official",
         evolutionApiUrl: ""
       };
     }
   }
 
   // Update WhatsApp config in database or localStorage
-  static async updateWhatsAppConfig(config: WhatsAppConfig): Promise<void> {
+  static async updateWhatsAppConfig(config: WhatsAppConfig, userId?: string): Promise<void> {
     try {
-      if (!this.user) {
-        throw new Error('Usuario no autenticado');
-      }
-
-      console.log('Updating WhatsApp config for user:', this.user.id, 'with config:', config);
-      
-      // Primero verificar si ya existe una configuración
-      const { data: existingConfig, error: fetchError } = await supabase
-        .from('user_whatsapp_configs')
-        .select('*')
-        .eq('user_id', this.user.id)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error fetching existing config:', fetchError);
-        throw fetchError;
-      }
-
-      const configData = {
-        user_id: this.user.id,
-        phone_number: config.phoneNumber || '',
-        api_key: config.apiKey || '',
-        connection_method: config.connectionMethod || 'official',
-        evolution_api_url: config.evolutionApiUrl || null,
-        is_active: config.enabled || false,
-        updated_at: new Date().toISOString()
-      };
-
-      if (existingConfig) {
-        // Actualizar configuración existente
-        const { error: updateError } = await supabase
-          .from('user_whatsapp_configs')
-          .update(configData)
-          .eq('user_id', this.user.id);
-
-        if (updateError) {
-          console.error('Error updating WhatsApp config:', updateError);
-          throw updateError;
-        }
-      } else {
-        // Crear nueva configuración
-        const { error: insertError } = await supabase
-          .from('user_whatsapp_configs')
-          .insert([configData]);
-
-        if (insertError) {
-          console.error('Error inserting WhatsApp config:', insertError);
-          throw insertError;
-        }
-      }
-
-      console.log('WhatsApp config updated successfully');
+      await DatabaseService.updateUserWhatsAppConfig(config, userId);
     } catch (error) {
-      console.error('Error updating WhatsApp config:', error);
+      console.error("Error updating WhatsApp config:", error);
       throw error;
     }
   }
