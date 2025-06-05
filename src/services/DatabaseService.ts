@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 
@@ -319,42 +318,32 @@ export class DatabaseService {
     
     console.log("Updating WhatsApp config for user:", currentUserId, "with config:", config);
     
-    // First, check if a config already exists
-    const { data: existingConfig } = await supabase
-      .from('user_whatsapp_configs')
-      .select('id')
-      .eq('user_id', currentUserId)
-      .maybeSingle();
-    
     const configData = {
       user_id: currentUserId,
       phone_number: config.phoneNumber,
       api_key: config.apiKey,
       connection_method: config.connectionMethod,
       evolution_api_url: config.evolutionApiUrl,
-      is_active: config.enabled
+      is_active: config.enabled,
+      updated_at: new Date().toISOString()
     };
 
-    let result;
-    if (existingConfig) {
-      // Update existing config
-      result = await supabase
-        .from('user_whatsapp_configs')
-        .update(configData)
-        .eq('user_id', currentUserId);
-    } else {
-      // Insert new config
-      result = await supabase
-        .from('user_whatsapp_configs')
-        .insert(configData);
-    }
-    
-    if (result.error) {
-      console.error("Error updating WhatsApp config:", result.error);
-      throw result.error;
+    console.log("Config data to upsert:", configData);
+
+    const { data, error } = await supabase
+      .from('user_whatsapp_configs')
+      .upsert(configData, {
+        onConflict: 'user_id'
+      })
+      .select();
+
+    if (error) {
+      console.error("Error updating WhatsApp config:", error);
+      throw error;
     }
 
-    console.log("WhatsApp config updated successfully");
+    console.log("WhatsApp config updated successfully:", data);
+    return data;
   }
 
   // Email config methods
