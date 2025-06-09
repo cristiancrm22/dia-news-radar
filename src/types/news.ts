@@ -1,3 +1,4 @@
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -23,6 +24,7 @@ export interface WhatsAppConfig {
   apiKey?: string;
   connectionMethod: "official" | "evolution" | "businesscloud";
   evolutionApiUrl?: string;
+  enabled?: boolean; // Added enabled property
 }
 
 export interface EmailConfig {
@@ -106,4 +108,17 @@ export interface PythonScriptExecutionResponse {
   output?: string[];
   error?: string;
   csvPath?: string;
+}
+
+// WhatsApp subscription interface
+export interface WhatsAppSubscription {
+  id: string;
+  user_id: string;
+  phone_number: string;
+  frequency: 'daily' | 'weekly' | 'hourly';
+  time: string;
+  keywords: string[];
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }

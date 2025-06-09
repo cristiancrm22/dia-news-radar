@@ -80,6 +80,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       // Obtener noticias
       const todayNews = await getTodayNewsFromPython();
+      console.log(`Noticias obtenidas: ${todayNews.length}`);
       
       for (const subscription of subscriptions) {
         try {
@@ -206,7 +207,8 @@ function formatNewsForWhatsApp(news: any[]): string {
   let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
   
-  news.slice(0, 5).forEach((item, index) => {
+  // CORREGIDO: Enviar TODAS las noticias en lugar de limitar a 5
+  news.forEach((item, index) => {
     message += `*${index + 1}.* ${item.title}\n`;
     if (item.summary) {
       message += `📝 ${item.summary.substring(0, 100)}...\n`;
@@ -219,7 +221,7 @@ function formatNewsForWhatsApp(news: any[]): string {
   });
   
   message += "━━━━━━━━━━━━━━━━━━━━\n";
-  message += "🤖 Enviado automáticamente por News Radar";
+  message += `🤖 Enviado automáticamente por News Radar (${news.length} noticias)`;
   
   return message;
 }

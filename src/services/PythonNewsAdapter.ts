@@ -215,32 +215,25 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
   pythonExecutionStatus.endTime = undefined;
   pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias REAL..."];
 
-  // Build Python script parameters
-  const scriptParams: PythonScriptParams = {
-    keywords: options.keywords || [],
-    sources: options.sources || [],
-    twitterUsers: options.twitterUsers || [],
-    outputPath: '/tmp/resultados_' + Date.now() + '.csv',
-    maxWorkers: 5,
-    validateLinks: options.validateLinks,
-    currentDateOnly: options.currentDateOnly,
-    pythonExecutable: options.pythonExecutable || 'python3'
-  };
-  
   try {
+    // CORREGIDO: Enviar arrays directamente, no como strings JSON
     const execPayload = {
-      keywords: scriptParams.keywords,
-      sources: scriptParams.sources,
-      twitterUsers: scriptParams.twitterUsers,
-      validateLinks: scriptParams.validateLinks,
-      currentDateOnly: scriptParams.currentDateOnly,
-      outputPath: scriptParams.outputPath,
-      maxWorkers: scriptParams.maxWorkers,
-      pythonExecutable: scriptParams.pythonExecutable
+      keywords: options.keywords || [],
+      sources: options.sources || [],
+      twitterUsers: options.twitterUsers || [],
+      validateLinks: options.validateLinks || false,
+      todayOnly: options.currentDateOnly || false,
+      outputPath: '/tmp/resultados_' + Date.now() + '.csv',
+      maxWorkers: 5,
+      pythonExecutable: options.pythonExecutable || 'python3'
     };
 
-    console.log("Conectando con servidor Python REAL...");
+    console.log("Ejecutando con parámetros CORREGIDOS:", execPayload);
     pythonExecutionStatus.output.push("🔗 Conectando con servidor Python...");
+    pythonExecutionStatus.output.push(`📝 Keywords: ${JSON.stringify(execPayload.keywords)}`);
+    pythonExecutionStatus.output.push(`🌐 Sources: ${execPayload.sources.length} fuentes`);
+    pythonExecutionStatus.output.push(`📅 Today Only: ${execPayload.todayOnly}`);
+    pythonExecutionStatus.output.push(`🔗 Validate Links: ${execPayload.validateLinks}`);
     
     const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/execute`;
     const response = await fetchWithRetries(apiUrl, {
@@ -283,7 +276,7 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
 }
 
 /**
- * Poll for REAL script execution status - REMOVED TIMEOUT
+ * Poll for REAL script execution status
  */
 async function pollRealScriptExecution(pid?: number): Promise<PythonScriptExecutionStatus> {
   return new Promise((resolve, reject) => {
@@ -354,6 +347,8 @@ async function pollRealScriptExecution(pid?: number): Promise<PythonScriptExecut
         pythonExecutionStatus.output.push(`⚠️ Error consultando estado: ${pollingError.message}`);
       }
     }, 3000); // Poll every 3 seconds for real execution
+    
+    // Removed the 10-minute timeout - the script can now run indefinitely
   });
 }
 
@@ -365,7 +360,7 @@ export function getPythonExecutionStatus(): PythonScriptExecutionStatus {
 }
 
 /**
- * Load results from CSV file - REAL MODE ONLY
+ * Load results from CSV file - IMPROVED TO HANDLE BOTH FORMATS
  */
 export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> {
   if (!csvPath) {
@@ -394,30 +389,25 @@ export async function loadResultsFromCsv(csvPath?: string): Promise<NewsItem[]> 
 }
 
 /**
- * Parse CSV content to NewsItem array - updated to handle both English and Spanish headers
+ * Parse CSV content to NewsItem array - IMPROVED TO HANDLE BOTH FORMATS
  */
 function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   if (!csvContent) return [];
   
   console.log("Parsing CSV content:", csvContent.substring(0, 200) + "...");
   
-  // Simple CSV parser
+  // Simple CSV parser that handles both comma-separated and quoted values
   const lines = csvContent.split('\n');
   if (lines.length < 2) return []; // Need at least header + one data row
   
-  const headers = lines[0].split(',');
+  const headers = parseCSVLine(lines[0]);
   console.log("CSV headers found:", headers);
   
-  // Support both English and Spanish headers
-  let titleIndex = headers.indexOf('titulo');
-  let dateIndex = headers.indexOf('fecha');
-  let urlIndex = headers.indexOf('url');
-  let summaryIndex = headers.indexOf('resumen');
-  
-  // If Spanish headers not found, try English headers
-  if (titleIndex === -1) titleIndex = headers.indexOf('title');
-  if (dateIndex === -1) dateIndex = headers.indexOf('date');
-  if (summaryIndex === -1) summaryIndex = headers.indexOf('description');
+  // Support multiple header formats
+  let titleIndex = headers.findIndex(h => h.toLowerCase().includes('titulo') || h.toLowerCase().includes('title'));
+  let dateIndex = headers.findIndex(h => h.toLowerCase().includes('fecha') || h.toLowerCase().includes('date'));
+  let urlIndex = headers.findIndex(h => h.toLowerCase().includes('url'));
+  let summaryIndex = headers.findIndex(h => h.toLowerCase().includes('resumen') || h.toLowerCase().includes('description'));
   
   if (titleIndex === -1 || dateIndex === -1 || urlIndex === -1 || summaryIndex === -1) {
     console.error("CSV headers do not match expected format. Expected: titulo/title, fecha/date, url, resumen/description. Got:", headers);
@@ -431,7 +421,7 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     
-    const values = lines[i].split(',');
+    const values = parseCSVLine(lines[i]);
     if (values.length < headers.length) continue;
     
     // Extract values and clean quotes if present
@@ -466,6 +456,41 @@ function parseCsvToNewsItems(csvContent: string): NewsItem[] {
   
   console.log(`Parsed ${newsItems.length} news items from CSV`);
   return newsItems;
+}
+
+/**
+ * Parse a CSV line handling quotes and commas properly
+ */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"' && (i === 0 || line[i - 1] === ',')) {
+      inQuotes = true;
+    } else if (char === '"' && inQuotes) {
+      // Check if next char is a quote (escaped quote)
+      if (i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++; // Skip the next quote
+      } else {
+        inQuotes = false;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  
+  // Add the last field
+  result.push(current);
+  
+  return result;
 }
 
 /**

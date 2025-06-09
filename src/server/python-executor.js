@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const { spawn } = require('child_process');
@@ -17,50 +18,67 @@ const runningProcesses = new Map();
 // Endpoint to execute Python script
 app.post('/api/scraper/execute', (req, res) => {
   try {
-    const { keywords, sources, twitterUsers, validateLinks, currentDateOnly, outputPath, maxWorkers, pythonExecutable } = req.body;
+    const { keywords, sources, twitterUsers, validateLinks, todayOnly, outputPath, maxWorkers, pythonExecutable } = req.body;
     
-    console.log('Executing Python script with params:', req.body);
+    console.log('Executing Python script with params:', {
+      keywords: keywords,
+      sources: sources ? sources.slice(0, 3) + '...' : sources,
+      twitterUsers,
+      validateLinks,
+      todayOnly,
+      outputPath,
+      maxWorkers
+    });
     
     // Prepare arguments for the Python script
     const args = [];
     
-    if (keywords && keywords.length > 0) {
-      args.push('--keywords', JSON.stringify(keywords));
+    // CORREGIDO: Pasar parámetros como JSON strings válidos
+    if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+      args.push('--keywords');
+      args.push(JSON.stringify(keywords));
     }
     
-    if (sources && sources.length > 0) {
-      args.push('--sources', JSON.stringify(sources));
+    if (sources && Array.isArray(sources) && sources.length > 0) {
+      args.push('--sources');
+      args.push(JSON.stringify(sources));
     }
     
-    if (twitterUsers && twitterUsers.length > 0) {
-      args.push('--twitter-users', JSON.stringify(twitterUsers));
+    if (twitterUsers && Array.isArray(twitterUsers) && twitterUsers.length > 0) {
+      args.push('--twitter-users');
+      args.push(JSON.stringify(twitterUsers));
     }
     
     if (outputPath) {
-      args.push('--output', outputPath);
+      args.push('--output');
+      args.push(outputPath);
     }
     
-    if (maxWorkers) {
-      args.push('--max-workers', maxWorkers.toString());
+    if (maxWorkers && typeof maxWorkers === 'number') {
+      args.push('--max-workers');
+      args.push(maxWorkers.toString());
     }
     
-    if (validateLinks) {
+    if (validateLinks === true) {
       args.push('--validate-links');
     }
     
-    if (currentDateOnly) {
+    if (todayOnly === true) {
       args.push('--today-only');
     }
     
     // Execute the Python script
-    const pythonCommand = 'python'; // Fuerza el uso de python en Windows
+    const pythonCommand = pythonExecutable || 'python3';
     const scriptPath = path.join(__dirname, 'radar.py');
     
     console.log(`Executing: ${pythonCommand} ${scriptPath} ${args.join(' ')}`);
+    console.log('Full command args:', [scriptPath, ...args]);
     
     const process = spawn(pythonCommand, [scriptPath, ...args], {
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: __dirname
     });
+    
     console.log('Spawned process PID:', process.pid);
     
     const processInfo = {
@@ -77,7 +95,7 @@ app.post('/api/scraper/execute', (req, res) => {
     process.stdout.on('data', (data) => {
       const output = data.toString().trim();
       if (output) {
-        console.log('Python output:', output);
+        console.log('Python stdout:', output);
         processInfo.output.push(output);
       }
     });
@@ -85,7 +103,7 @@ app.post('/api/scraper/execute', (req, res) => {
     process.stderr.on('data', (data) => {
       const error = data.toString().trim();
       if (error) {
-        console.error('Python error:', error);
+        console.error('Python stderr:', error);
         processInfo.output.push(`ERROR: ${error}`);
       }
     });

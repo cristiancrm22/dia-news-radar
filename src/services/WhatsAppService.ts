@@ -1,3 +1,4 @@
+
 import { WhatsAppConfig } from "@/types/news";
 
 export interface WhatsAppSendResult {
@@ -274,7 +275,8 @@ export class WhatsAppService {
     let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
     
-    news.slice(0, 5).forEach((item, index) => {
+    // CORREGIDO: Enviar TODAS las noticias en lugar de limitar a 5
+    news.forEach((item, index) => {
       message += `*${index + 1}.* ${item.title}\n`;
       if (item.summary) {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
@@ -287,7 +289,7 @@ export class WhatsAppService {
     });
     
     message += "━━━━━━━━━━━━━━━━━━━━\n";
-    message += "🤖 News Radar";
+    message += `🤖 News Radar (${news.length} noticias)`;
     
     return message;
   }
