@@ -283,7 +283,7 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
 }
 
 /**
- * Poll for REAL script execution status
+ * Poll for REAL script execution status - REMOVED TIMEOUT
  */
 async function pollRealScriptExecution(pid?: number): Promise<PythonScriptExecutionStatus> {
   return new Promise((resolve, reject) => {
@@ -354,17 +354,6 @@ async function pollRealScriptExecution(pid?: number): Promise<PythonScriptExecut
         pythonExecutionStatus.output.push(`⚠️ Error consultando estado: ${pollingError.message}`);
       }
     }, 3000); // Poll every 3 seconds for real execution
-    
-    // Set a timeout to stop polling after 10 minutes
-    setTimeout(() => {
-      if (pythonExecutionStatus.running) {
-        clearInterval(pollInterval);
-        pythonExecutionStatus.running = false;
-        pythonExecutionStatus.error = "Tiempo de ejecución excedido (10 minutos)";
-        pythonExecutionStatus.output.push("⏱️ Timeout después de 10 minutos");
-        reject(new Error("Script execution timeout"));
-      }
-    }, 10 * 60 * 1000);
   });
 }
 
