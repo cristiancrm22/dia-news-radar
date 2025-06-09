@@ -1,4 +1,3 @@
-
 import { WhatsAppConfig } from "@/types/news";
 
 export interface WhatsAppSendResult {
@@ -18,11 +17,6 @@ export class WhatsAppService {
     
     onLog?.('info', `=== ENVIANDO WHATSAPP A ${phoneNumber} ===`);
     
-    if (!config.enabled) {
-      onLog?.('error', 'WhatsApp no está habilitado');
-      return { success: false, error: 'WhatsApp no habilitado' };
-    }
-
     if (!phoneNumber || !message) {
       onLog?.('error', 'Número o mensaje vacío');
       return { success: false, error: 'Datos incompletos' };
@@ -62,7 +56,6 @@ export class WhatsAppService {
         
         const instanceName = "SenadoN8N";
         
-        // CORREGIDO: Usar el formato correcto para Evolution API
         const payload = {
           number: cleanNumber,
           text: message
@@ -188,12 +181,7 @@ export class WhatsAppService {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
-      onLog?.('info', `Configuración WhatsApp obtenida: enabled=${config.enabled}`);
-      
-      if (!config.enabled) {
-        onLog?.('error', 'WhatsApp no habilitado');
-        return { success: false, error: 'WhatsApp no habilitado' };
-      }
+      onLog?.('info', `Configuración WhatsApp obtenida`);
       
       const todayNews = await NewsService.getNews();
       onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);
@@ -225,11 +213,6 @@ export class WhatsAppService {
     try {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
-      
-      if (!config.enabled) {
-        onLog?.('error', 'WhatsApp no habilitado');
-        return { success: false, error: 'WhatsApp no habilitado' };
-      }
       
       const todayNews = await NewsService.getNews();
       onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);

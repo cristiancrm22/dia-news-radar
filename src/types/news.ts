@@ -1,4 +1,3 @@
-
 export interface NewsItem {
   id: string;
   title: string;
@@ -20,7 +19,6 @@ export interface NewsSource {
 }
 
 export interface WhatsAppConfig {
-  enabled: boolean;
   phoneNumber: string;
   apiKey?: string;
   connectionMethod: "official" | "evolution" | "businesscloud";

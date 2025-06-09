@@ -1,9 +1,7 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +17,6 @@ import WhatsAppNewsManager from "@/components/WhatsAppNewsManager";
 const WhatsAppConfig = () => {
   const { logs, addLog, clearLogs } = useLogs();
   const [config, setConfig] = useState<WhatsAppConfigType>({
-    enabled: false,
     phoneNumber: "",
     apiKey: "",
     connectionMethod: "official",
@@ -46,12 +43,6 @@ const WhatsAppConfig = () => {
     
     loadConfig();
   }, []);
-
-  const handleEnabledChange = (enabled: boolean) => {
-    const newConfig = { ...config, enabled };
-    setConfig(newConfig);
-    console.log("Config enabled changed to:", enabled);
-  };
 
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newConfig = { ...config, phoneNumber: e.target.value };
@@ -185,21 +176,7 @@ const WhatsAppConfig = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="whatsapp-enabled" className="flex flex-col space-y-1">
-                  <span>Habilitar WhatsApp</span>
-                  <span className="font-normal text-sm text-muted-foreground">
-                    Activa la integración con WhatsApp
-                  </span>
-                </Label>
-                <Switch
-                  id="whatsapp-enabled"
-                  checked={config.enabled}
-                  onCheckedChange={handleEnabledChange}
-                />
-              </div>
-
-              <div className="space-y-4 pt-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone-number">Número de WhatsApp</Label>
                   <Input

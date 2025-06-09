@@ -285,14 +285,13 @@ export class DatabaseService {
     }
   }
 
-  // WhatsApp config methods - CORREGIDO con mejor manejo de errores
+  // WhatsApp config methods - REMOVED enabled validations
   static async getUserWhatsAppConfig(userId?: string): Promise<WhatsAppConfig> {
     const currentUserId = userId || await this.getCurrentUserId();
     
     if (!currentUserId) {
       console.log("No user ID, returning default WhatsApp config");
       return {
-        enabled: false,
         phoneNumber: "",
         apiKey: "",
         connectionMethod: "official",
@@ -317,7 +316,6 @@ export class DatabaseService {
       if (!data) {
         console.log("No WhatsApp config found, returning default");
         return {
-          enabled: false,
           phoneNumber: "",
           apiKey: "",
           connectionMethod: "official",
@@ -327,18 +325,20 @@ export class DatabaseService {
 
       console.log("WhatsApp config data:", data);
 
-      // CORREGIDO: Mapear correctamente is_active a enabled
+      // Validate connection_method and provide fallback
+      const connectionMethod = data.connection_method;
+      const validConnectionMethods = ["official", "evolution", "businesscloud"] as const;
+      const isValidConnectionMethod = validConnectionMethods.includes(connectionMethod as any);
+
       return {
-        enabled: data.is_active || false,
         phoneNumber: data.phone_number || "",
         apiKey: data.api_key || "",
-        connectionMethod: data.connection_method || "official",
+        connectionMethod: isValidConnectionMethod ? connectionMethod as "official" | "evolution" | "businesscloud" : "official",
         evolutionApiUrl: data.evolution_api_url || ""
       };
     } catch (error) {
       console.error("Error in getUserWhatsAppConfig:", error);
       return {
-        enabled: false,
         phoneNumber: "",
         apiKey: "",
         connectionMethod: "official",
@@ -357,7 +357,6 @@ export class DatabaseService {
     console.log("Updating WhatsApp config:", config);
 
     try {
-      // CORREGIDO: Mapear enabled a is_active
       const { data, error } = await supabase
         .from('user_whatsapp_configs')
         .upsert({
@@ -366,7 +365,7 @@ export class DatabaseService {
           api_key: config.apiKey || "",
           connection_method: config.connectionMethod || "official",
           evolution_api_url: config.evolutionApiUrl || "",
-          is_active: config.enabled || false,
+          is_active: true, // Always active now
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
