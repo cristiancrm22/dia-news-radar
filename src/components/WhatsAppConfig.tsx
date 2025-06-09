@@ -47,22 +47,10 @@ const WhatsAppConfig = () => {
     loadConfig();
   }, []);
 
-  const handleEnabledChange = async (enabled: boolean) => {
-    try {
-      const newConfig = { ...config, enabled };
-      setConfig(newConfig);
-      await NewsService.updateWhatsAppConfig(newConfig);
-      console.log("Config saved after enabled change");
-      addLog('info', 'whatsapp', `WhatsApp ${enabled ? 'habilitado' : 'deshabilitado'}`);
-    } catch (error) {
-      console.error("Error saving config:", error);
-      addLog('error', 'whatsapp', `Error al cambiar estado: ${error.message}`);
-      toast({
-        title: "Error",
-        description: "Error al cambiar el estado de WhatsApp",
-        variant: "destructive"
-      });
-    }
+  const handleEnabledChange = (enabled: boolean) => {
+    const newConfig = { ...config, enabled };
+    setConfig(newConfig);
+    console.log("Config enabled changed to:", enabled);
   };
 
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,22 +63,10 @@ const WhatsAppConfig = () => {
     setConfig(newConfig);
   };
 
-  const handleConnectionMethodChange = async (value: "official" | "evolution" | "businesscloud") => {
-    try {
-      const newConfig = { ...config, connectionMethod: value };
-      setConfig(newConfig);
-      await NewsService.updateWhatsAppConfig(newConfig);
-      console.log("Config saved after connection method change");
-      addLog('info', 'whatsapp', `Método de conexión cambiado a: ${value}`);
-    } catch (error) {
-      console.error("Error saving config:", error);
-      addLog('error', 'whatsapp', `Error al cambiar método de conexión: ${error.message}`);
-      toast({
-        title: "Error",
-        description: "Error al cambiar el método de conexión",
-        variant: "destructive"
-      });
-    }
+  const handleConnectionMethodChange = (value: "official" | "evolution" | "businesscloud") => {
+    const newConfig = { ...config, connectionMethod: value };
+    setConfig(newConfig);
+    console.log("Connection method changed to:", value);
   };
 
   const handleEvolutionApiUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {

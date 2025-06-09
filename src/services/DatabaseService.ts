@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { NewsSource, WhatsAppConfig, EmailConfig, SearchSettings } from "@/types/news";
 
@@ -285,7 +286,7 @@ export class DatabaseService {
     }
   }
 
-  // WhatsApp config methods - CORREGIDO
+  // WhatsApp config methods - CORREGIDO con mejor manejo de errores
   static async getUserWhatsAppConfig(userId?: string): Promise<WhatsAppConfig> {
     const currentUserId = userId || await this.getCurrentUserId();
     
@@ -341,7 +342,7 @@ export class DatabaseService {
 
       if (error) {
         console.error("Error updating WhatsApp config:", error);
-        throw error;
+        throw new Error(`Error al actualizar configuración de WhatsApp: ${error.message || error.details || 'Error desconocido'}`);
       }
 
       console.log("WhatsApp config updated successfully:", data);
