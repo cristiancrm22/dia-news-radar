@@ -249,7 +249,7 @@ app.post('/api/email/send', async (req, res) => {
     
     console.log('Ejecutando Python script de email...');
     
-    const pythonProcess = spawn('python3', pythonArgs);
+    const pythonProcess = spawn('python', pythonArgs);
     
     let output = '';
     let errorOutput = '';
