@@ -1,296 +1,227 @@
 
-import { EmailConfig } from "@/types/news";
 import { supabase } from "@/integrations/supabase/client";
 
+export interface EmailTestRequest {
+  to: string;
+  subject: string;
+  content: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUsername?: string;
+  smtpPassword?: string;
+  useTLS?: boolean;
+}
+
 export class EmailService {
-  
-  static async sendEmailViaResend(to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
+  static async sendTestEmail(emailData: EmailTestRequest): Promise<{ success: boolean; message: string; error?: string }> {
     try {
-      console.log("=== ENVÍO EMAIL VIA RESEND ===");
-      console.log("Datos del email:", { to, subject });
-      
-      const { data, error } = await supabase.functions.invoke('send-email-resend', {
-        body: {
-          to: to,
-          subject: subject,
-          html: html
-        }
-      });
+      console.log("Enviando email de prueba usando Python script:", emailData);
 
-      if (error) {
-        console.error("Error del edge function:", error);
-        throw error;
-      }
-
-      console.log("Resultado exitoso:", data);
-      return data;
-      
-    } catch (error: any) {
-      console.error("Error completo en sendEmailViaResend:", error);
-      return {
-        success: false,
-        error: error.message || "Error enviando email via Resend"
-      };
-    }
-  }
-
-  static async sendEmailViaPython(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
-    try {
-      console.log("=== ENVÍO EMAIL VIA PYTHON ===");
-      console.log("Config:", {
-        smtpHost: config.smtpHost,
-        smtpPort: config.smtpPort,
-        smtpUsername: config.smtpUsername,
-        to: to,
-        subject: subject,
-        useTLS: config.useTLS
-      });
-      
-      const emailData = {
-        smtp_host: config.smtpHost || "smtp.gmail.com",
-        smtp_port: config.smtpPort || 587,
-        smtp_user: config.smtpUsername,
-        smtp_pass: config.smtpPassword,
-        to: to,
-        subject: subject,
-        html: html,
-        use_tls: config.useTLS !== false
-      };
-      
-      console.log("Datos del email (sin password):", {
-        ...emailData,
-        smtp_pass: "[PROTEGIDO]"
-      });
-      
-      const response = await fetch("http://localhost:8000/api/email/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(emailData)
-      });
-      
-      console.log("Respuesta del servidor:", response.status, response.statusText);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Error del servidor:", errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      
-      const result = await response.json();
-      console.log("Resultado exitoso:", result);
-      
-      return result;
-      
-    } catch (error: any) {
-      console.error("Error completo en sendEmailViaPython:", error);
-      return {
-        success: false,
-        error: error.message || "Error enviando email via Python"
-      };
-    }
-  }
-
-  static async sendEmail(config: EmailConfig, to: string, subject: string, html: string): Promise<{success: boolean, message?: string, error?: string}> {
-    console.log("=== INICIO SENDMAIL ===");
-    
-    if (!to || !subject) {
-      return {
-        success: false,
-        error: "Destinatario y asunto son requeridos."
-      };
-    }
-    
-    // Primero intentar con Resend (más confiable)
-    console.log("Intentando envío con Resend...");
-    const resendResult = await this.sendEmailViaResend(to, subject, html);
-    
-    if (resendResult.success) {
-      return resendResult;
-    }
-    
-    console.log("Resend falló, intentando con Python/SMTP...");
-    
-    // Si Resend falla, intentar con Python/SMTP como fallback
-    if (!config.smtpHost || !config.smtpUsername || !config.smtpPassword) {
-      return {
-        success: false,
-        error: "Configuración de email incompleta y Resend no disponible. Verifique SMTP host, usuario y contraseña."
-      };
-    }
-    
-    return this.sendEmailViaPython(config, to, subject, html);
-  }
-
-  static async testEmailConfiguration(config: EmailConfig): Promise<{success: boolean, message?: string, error?: string}> {
-    try {
-      console.log("=== PRUEBA DE EMAIL ===");
-      
-      const testHtml = `
-        <h1>¡Configuración de correo exitosa!</h1>
-        <p>Este es un correo de prueba de News Radar.</p>
-        <p>Su configuración de correo electrónico está funcionando correctamente.</p>
-        <p>Configuración utilizada:</p>
-        <ul>
-          <li>Servidor SMTP: ${config.smtpHost || 'Resend'}</li>
-          <li>Puerto: ${config.smtpPort || 'N/A'}</li>
-          <li>Usuario: ${config.smtpUsername || 'Resend API'}</li>
-          <li>TLS: ${config.useTLS ? 'Activado' : 'Desactivado'}</li>
-        </ul>
-        <p>Ahora podrá recibir resúmenes de noticias en este correo.</p>
-        <br>
-        <p>Saludos,<br>Equipo de News Radar</p>
-      `;
-      
-      return this.sendEmail(
-        config,
-        config.email,
-        "Prueba de configuración de correo - News Radar",
-        testHtml
-      );
-      
-    } catch (error: any) {
-      console.error("Error testing email configuration:", error);
-      return {
-        success: false,
-        error: error.message || "Error al probar la configuración de correo"
-      };
-    }
-  }
-
-  static async sendScheduledNewsEmails(
-    emails: string[],
-    onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
-  ): Promise<{ success: boolean; results?: any; error?: string }> {
-    
-    onLog?.('info', `Enviando noticias programadas por email a ${emails.length} direcciones`);
-    
-    try {
-      const NewsService = (await import('./NewsService')).default;
-      const config = await NewsService.getEmailConfig();
-      
-      if (!config.enabled) {
-        onLog?.('error', 'Email no está habilitado en la configuración');
-        return { success: false, error: 'Email no está habilitado' };
-      }
-      
-      const todayNews = await NewsService.getNews();
-      
-      if (todayNews.length === 0) {
-        onLog?.('info', 'No hay noticias para enviar hoy');
-        return { success: true, results: { message: 'No hay noticias para enviar' } };
-      }
-      
-      const results = {
-        sent: 0,
-        failed: 0,
-        errors: [] as string[]
-      };
-      
-      const newsHtml = this.generateNewsEmailHTML(todayNews, 'daily');
-      const subject = `Resumen diario de noticias - ${new Date().toLocaleDateString('es-ES')}`;
-      
-      for (const email of emails) {
-        try {
-          const result = await this.sendEmail(config, email, subject, newsHtml);
-          
-          if (result.success) {
-            results.sent++;
-            onLog?.('success', `Email enviado correctamente a ${email}`);
-          } else {
-            results.failed++;
-            results.errors.push(`${email}: ${result.error}`);
-            onLog?.('error', `Error enviando a ${email}: ${result.error}`);
-          }
-        } catch (error: any) {
-          results.failed++;
-          results.errors.push(`${email}: ${error.message}`);
-          onLog?.('error', `Error inesperado enviando a ${email}: ${error.message}`);
-        }
-      }
-      
-      onLog?.('success', `Proceso completado: ${results.sent} enviados, ${results.failed} fallidos`);
-      return { 
-        success: results.sent > 0, 
-        results: {
-          sent: results.sent,
-          failed: results.failed,
-          errors: results.errors,
-          totalNews: todayNews.length
-        }
-      };
-      
-    } catch (error: any) {
-      onLog?.('error', `Error enviando noticias programadas por email: ${error.message}`, error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  private static generateNewsEmailHTML(newsItems: any[], frequency: 'daily' | 'weekly'): string {
-    const frequencyText = frequency === 'daily' ? 'diario' : 'semanal';
-    const date = new Date().toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
-    let html = `
-      <html>
+      // Preparar el HTML del email
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
         <head>
+          <meta charset="utf-8">
+          <title>Email de Prueba - News Radar</title>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .header { background-color: #1f2937; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; }
-            .news-item { margin-bottom: 20px; padding: 15px; border-left: 4px solid #3b82f6; background-color: #f8fafc; }
-            .news-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
-            .news-summary { margin-bottom: 10px; }
-            .news-source { font-size: 12px; color: #6b7280; }
-            .footer { background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px; border-radius: 8px; }
+            .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: white; padding: 20px; border-radius: 0 0 8px 8px; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Resumen ${frequencyText} de noticias</h1>
-            <p>${date}</p>
-          </div>
-          <div class="content">
-            <p>Aquí tienes tu resumen ${frequencyText} de noticias más relevantes:</p>
-    `;
-
-    if (newsItems.length === 0) {
-      html += `
-        <div class="news-item">
-          <p>No se encontraron noticias nuevas para este período.</p>
-        </div>
-      `;
-    } else {
-      newsItems.slice(0, 10).forEach(item => {
-        html += `
-          <div class="news-item">
-            <div class="news-title">${item.title}</div>
-            <div class="news-summary">${item.summary || 'Sin resumen disponible'}</div>
-            <div class="news-source">
-              Fuente: ${item.sourceName || 'Desconocida'} | 
-              ${item.date ? item.date : 'Fecha no disponible'}
-              ${item.sourceUrl ? ` | <a href="${item.sourceUrl}" target="_blank">Leer más</a>` : ''}
+          <div class="container">
+            <div class="header">
+              <h1>🔍 News Radar</h1>
+              <p>Email de Prueba</p>
+            </div>
+            <div class="content">
+              <h2>¡Configuración de Email Exitosa!</h2>
+              <p>Este es un email de prueba para verificar que tu configuración de correo electrónico está funcionando correctamente.</p>
+              <p><strong>Contenido personalizado:</strong></p>
+              <p>${emailData.content || 'No se proporcionó contenido personalizado.'}</p>
+              <p>Si recibes este mensaje, significa que News Radar puede enviar emails correctamente usando tu configuración.</p>
+            </div>
+            <div class="footer">
+              <p>Este email fue enviado por News Radar como parte de una prueba de configuración.</p>
+              <p>Fecha: ${new Date().toLocaleString('es-ES')}</p>
             </div>
           </div>
-        `;
-      });
-    }
+        </body>
+        </html>
+      `;
 
-    html += `
-          </div>
-          <div class="footer">
-            <p>Este correo fue enviado automáticamente por News Radar</p>
-            <p>Si no deseas recibir más correos, desactiva la opción en tu configuración</p>
+      // Llamar al endpoint del servidor Python
+      const response = await fetch('http://localhost:8000/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          smtp_host: emailData.smtpHost || 'smtp.gmail.com',
+          smtp_port: emailData.smtpPort || 587,
+          smtp_user: emailData.smtpUsername,
+          smtp_pass: emailData.smtpPassword,
+          to: emailData.to,
+          subject: emailData.subject || "Prueba de Email - News Radar",
+          html: htmlContent,
+          use_tls: emailData.useTLS !== false
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Respuesta del servidor Python:", result);
+
+      if (result.success) {
+        return {
+          success: true,
+          message: result.message || "Email enviado correctamente"
+        };
+      } else {
+        return {
+          success: false,
+          message: "Error al enviar email",
+          error: result.error || "Error desconocido"
+        };
+      }
+
+    } catch (error: any) {
+      console.error("Error general al enviar email:", error);
+      return {
+        success: false,
+        message: "Error al enviar email",
+        error: error.message || "Error de conexión"
+      };
+    }
+  }
+
+  // Método para prueba de configuración de email
+  static async testEmailConfiguration(config: any): Promise<{ success: boolean; message: string; error?: string }> {
+    try {
+      return await this.sendTestEmail({
+        to: config.email,
+        subject: "Prueba de Configuración - News Radar",
+        content: "Esta es una prueba de configuración de correo electrónico desde News Radar.",
+        smtpHost: config.smtpHost,
+        smtpPort: config.smtpPort,
+        smtpUsername: config.smtpUsername,
+        smtpPassword: config.smtpPassword,
+        useTLS: config.useTLS
+      });
+    } catch (error: any) {
+      console.error("Error en testEmailConfiguration:", error);
+      return {
+        success: false,
+        message: "Error al probar configuración de email",
+        error: error.message || "Error desconocido"
+      };
+    }
+  }
+
+  // Método para enviar email general
+  static async sendEmail(config: any, to: string, subject: string, html: string): Promise<{ success: boolean; message: string; error?: string }> {
+    try {
+      return await this.sendTestEmail({
+        to: to,
+        subject: subject,
+        content: html,
+        smtpHost: config.smtpHost,
+        smtpPort: config.smtpPort,
+        smtpUsername: config.smtpUsername,
+        smtpPassword: config.smtpPassword,
+        useTLS: config.useTLS
+      });
+    } catch (error: any) {
+      console.error("Error en sendEmail:", error);
+      return {
+        success: false,
+        message: "Error al enviar email",
+        error: error.message || "Error desconocido"
+      };
+    }
+  }
+
+  static async sendScheduledNews(emailConfig: any, newsContent: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Noticias Programadas - News Radar</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px; border-radius: 8px; }
+            .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: white; padding: 20px; border-radius: 0 0 8px 8px; }
+            .news-item { margin-bottom: 20px; padding: 15px; border-left: 4px solid #2563eb; background: #f8fafc; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔍 News Radar</h1>
+              <p>Resumen de Noticias</p>
+            </div>
+            <div class="content">
+              <h2>Noticias del día</h2>
+              ${newsContent}
+            </div>
+            <div class="footer">
+              <p>Este email fue enviado automáticamente por News Radar.</p>
+              <p>Fecha: ${new Date().toLocaleString('es-ES')}</p>
+            </div>
           </div>
         </body>
-      </html>
-    `;
+        </html>
+      `;
 
-    return html;
+      const response = await fetch('http://localhost:8000/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          smtp_host: emailConfig.smtpHost || 'smtp.gmail.com',
+          smtp_port: emailConfig.smtpPort || 587,
+          smtp_user: emailConfig.smtpUsername,
+          smtp_pass: emailConfig.smtpPassword,
+          to: emailConfig.email,
+          subject: `Noticias del día - ${new Date().toLocaleDateString('es-ES')}`,
+          html: htmlContent,
+          use_tls: emailConfig.useTLS !== false
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        return {
+          success: true,
+          message: "Noticias enviadas por email correctamente"
+        };
+      } else {
+        throw new Error(result.error || "Error en el envío");
+      }
+
+    } catch (error: any) {
+      console.error("Error al enviar noticias por email:", error);
+      return {
+        success: false,
+        message: error.message || "Error al enviar noticias por email"
+      };
+    }
   }
 }

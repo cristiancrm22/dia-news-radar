@@ -285,20 +285,24 @@ export class DatabaseService {
     }
   }
 
-  // WhatsApp config methods
+  // WhatsApp config methods - CORREGIDO
   static async getUserWhatsAppConfig(userId?: string): Promise<WhatsAppConfig> {
     const currentUserId = userId || await this.getCurrentUserId();
+    
+    console.log("Getting WhatsApp config for user:", currentUserId);
     
     const { data, error } = await supabase
       .from('user_whatsapp_configs')
       .select('*')
       .eq('user_id', currentUserId)
-      .eq('is_active', true)
-      .single();
+      .maybeSingle();
     
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
+      console.error("Error getting WhatsApp config:", error);
       throw error;
     }
+    
+    console.log("WhatsApp config data:", data);
     
     return {
       enabled: data?.is_active ?? false,
@@ -312,18 +316,40 @@ export class DatabaseService {
   static async updateUserWhatsAppConfig(config: WhatsAppConfig, userId?: string) {
     const currentUserId = userId || await this.getCurrentUserId();
     
-    const { error } = await supabase
-      .from('user_whatsapp_configs')
-      .upsert({
-        user_id: currentUserId,
-        phone_number: config.phoneNumber,
-        api_key: config.apiKey,
-        connection_method: config.connectionMethod,
-        evolution_api_url: config.evolutionApiUrl,
-        is_active: config.enabled
-      });
+    console.log("Updating WhatsApp config for user:", currentUserId, "with config:", config);
     
-    if (error) throw error;
+    try {
+      const configData = {
+        user_id: currentUserId,
+        phone_number: config.phoneNumber || "",
+        api_key: config.apiKey || "",
+        connection_method: config.connectionMethod || "official",
+        evolution_api_url: config.evolutionApiUrl || "",
+        is_active: config.enabled || false,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log("Config data to upsert:", configData);
+
+      const { data, error } = await supabase
+        .from('user_whatsapp_configs')
+        .upsert(configData, {
+          onConflict: 'user_id'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating WhatsApp config:", error);
+        throw error;
+      }
+
+      console.log("WhatsApp config updated successfully:", data);
+      return data;
+    } catch (error: any) {
+      console.error("Exception in updateUserWhatsAppConfig:", error);
+      throw new Error(`Error al actualizar configuración de WhatsApp: ${error.message}`);
+    }
   }
 
   // Email config methods
@@ -439,5 +465,66 @@ export class DatabaseService {
     
     if (error) throw error;
     return data || [];
+  }
+
+  // WhatsApp subscriptions methods
+  static async getWhatsAppSubscriptions(userId?: string) {
+    const currentUserId = userId || await this.getCurrentUserId();
+    
+    const { data, error } = await supabase
+      .from('whatsapp_subscriptions')
+      .select('*')
+      .eq('user_id', currentUserId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async createWhatsAppSubscription(subscription: any, userId?: string) {
+    const currentUserId = userId || await this.getCurrentUserId();
+    
+    const { data, error } = await supabase
+      .from('whatsapp_subscriptions')
+      .insert({
+        user_id: currentUserId,
+        phone_number: subscription.phoneNumber,
+        frequency: subscription.frequency,
+        scheduled_time: subscription.scheduledTime,
+        weekdays: subscription.weekdays,
+        is_active: subscription.isActive
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+
+  static async updateWhatsAppSubscription(id: string, updates: any, userId?: string) {
+    const currentUserId = userId || await this.getCurrentUserId();
+    
+    const { data, error } = await supabase
+      .from('whatsapp_subscriptions')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', currentUserId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+
+  static async deleteWhatsAppSubscription(id: string, userId?: string) {
+    const currentUserId = userId || await this.getCurrentUserId();
+    
+    const { error } = await supabase
+      .from('whatsapp_subscriptions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', currentUserId);
+    
+    if (error) throw error;
   }
 }

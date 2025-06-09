@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const WhatsAppConfig = () => {
   const [testPhone, setTestPhone] = useState("");
   const [instanceName, setInstanceName] = useState("SenadoN8N");
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -38,6 +40,7 @@ const WhatsAppConfig = () => {
         setConfig(savedConfig);
       } catch (error) {
         console.error("Error loading WhatsApp config:", error);
+        addLog('error', 'whatsapp', `Error al cargar configuración: ${error.message}`);
       }
     };
     
@@ -45,13 +48,20 @@ const WhatsAppConfig = () => {
   }, []);
 
   const handleEnabledChange = async (enabled: boolean) => {
-    const newConfig = { ...config, enabled };
-    setConfig(newConfig);
     try {
+      const newConfig = { ...config, enabled };
+      setConfig(newConfig);
       await NewsService.updateWhatsAppConfig(newConfig);
       console.log("Config saved after enabled change");
+      addLog('info', 'whatsapp', `WhatsApp ${enabled ? 'habilitado' : 'deshabilitado'}`);
     } catch (error) {
       console.error("Error saving config:", error);
+      addLog('error', 'whatsapp', `Error al cambiar estado: ${error.message}`);
+      toast({
+        title: "Error",
+        description: "Error al cambiar el estado de WhatsApp",
+        variant: "destructive"
+      });
     }
   };
 
@@ -66,44 +76,52 @@ const WhatsAppConfig = () => {
   };
 
   const handleConnectionMethodChange = async (value: "official" | "evolution" | "businesscloud") => {
-    const newConfig = { ...config, connectionMethod: value };
-    setConfig(newConfig);
     try {
+      const newConfig = { ...config, connectionMethod: value };
+      setConfig(newConfig);
       await NewsService.updateWhatsAppConfig(newConfig);
       console.log("Config saved after connection method change");
+      addLog('info', 'whatsapp', `Método de conexión cambiado a: ${value}`);
     } catch (error) {
       console.error("Error saving config:", error);
+      addLog('error', 'whatsapp', `Error al cambiar método de conexión: ${error.message}`);
+      toast({
+        title: "Error",
+        description: "Error al cambiar el método de conexión",
+        variant: "destructive"
+      });
     }
   };
 
-  const handleEvolutionApiUrlChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEvolutionApiUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newConfig = { ...config, evolutionApiUrl: e.target.value };
     setConfig(newConfig);
     console.log("Evolution API URL changed to:", e.target.value);
-    
-    try {
-      await NewsService.updateWhatsAppConfig(newConfig);
-      console.log("Evolution API URL saved automatically");
-    } catch (error) {
-      console.error("Error saving Evolution API URL:", error);
-    }
   };
 
   const handleSaveConfig = async () => {
+    if (saving) return;
+    
+    setSaving(true);
     console.log("Saving WhatsApp config:", config);
+    
     try {
       await NewsService.updateWhatsAppConfig(config);
+      addLog('success', 'whatsapp', 'Configuración guardada exitosamente');
       toast({
         title: "Configuración guardada",
         description: "La configuración de WhatsApp se ha guardado correctamente"
       });
     } catch (error) {
       console.error("Error saving config:", error);
+      addLog('error', 'whatsapp', `Error al guardar configuración: ${error.message}`);
       toast({
         title: "Error",
-        description: "Error al guardar la configuración",
+        description: `Error al guardar la configuración: ${error.message}`,
         variant: "destructive"
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -251,7 +269,7 @@ const WhatsAppConfig = () => {
                         onChange={handleEvolutionApiUrlChange}
                       />
                       <p className="text-xs text-muted-foreground">
-                        URL completa del servidor Evolution API (se guarda automáticamente)
+                        URL completa del servidor Evolution API
                       </p>
                     </div>
                     
@@ -281,8 +299,12 @@ const WhatsAppConfig = () => {
                   />
                 </div>
 
-                <Button onClick={handleSaveConfig} className="w-full">
-                  Guardar configuración
+                <Button 
+                  onClick={handleSaveConfig} 
+                  className="w-full"
+                  disabled={saving}
+                >
+                  {saving ? "Guardando..." : "Guardar configuración"}
                 </Button>
               </div>
             </CardContent>

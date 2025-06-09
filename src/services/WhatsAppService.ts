@@ -1,4 +1,3 @@
-
 import { WhatsAppConfig } from "@/types/news";
 
 export interface WhatsAppSendResult {
@@ -129,7 +128,6 @@ export class WhatsAppService {
             };
             
           } catch (fetchError: any) {
-            clearTimeout(timeoutId);
             onLog?.('error', `Error en fetch con ${apiUrl}: ${fetchError.message}`);
             
             if (fetchError.name === 'AbortError') {
