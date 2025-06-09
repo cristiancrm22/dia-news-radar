@@ -1,3 +1,4 @@
+
 import { WhatsAppConfig } from "@/types/news";
 
 export interface WhatsAppSendResult {
@@ -60,11 +61,11 @@ export class WhatsAppService {
         }
         
         const instanceName = "SenadoN8N";
+        
+        // CORREGIDO: Usar el formato correcto para Evolution API
         const payload = {
           number: cleanNumber,
-          textMessage: {
-            text: message
-          }
+          text: message
         };
         
         // URLs alternativas para probar
@@ -109,7 +110,7 @@ export class WhatsAppService {
               if (response.status === 400) {
                 return { 
                   success: false, 
-                  error: `Número ${cleanNumber} no válido o sin WhatsApp` 
+                  error: `Error en formato de mensaje o número no válido: ${errorText}` 
                 };
               }
               
@@ -186,6 +187,8 @@ export class WhatsAppService {
     try {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
+      
+      onLog?.('info', `Configuración WhatsApp obtenida: enabled=${config.enabled}`);
       
       if (!config.enabled) {
         onLog?.('error', 'WhatsApp no habilitado');
