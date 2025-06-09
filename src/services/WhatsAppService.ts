@@ -17,11 +17,6 @@ export class WhatsAppService {
     
     onLog?.('info', `=== ENVIANDO WHATSAPP A ${phoneNumber} ===`);
     
-    if (!config.enabled) {
-      onLog?.('error', 'WhatsApp no está habilitado');
-      return { success: false, error: 'WhatsApp no habilitado' };
-    }
-
     if (!phoneNumber || !message) {
       onLog?.('error', 'Número o mensaje vacío');
       return { success: false, error: 'Datos incompletos' };
@@ -60,11 +55,10 @@ export class WhatsAppService {
         }
         
         const instanceName = "SenadoN8N";
+        
         const payload = {
           number: cleanNumber,
-          textMessage: {
-            text: message
-          }
+          text: message
         };
         
         // URLs alternativas para probar
@@ -109,7 +103,7 @@ export class WhatsAppService {
               if (response.status === 400) {
                 return { 
                   success: false, 
-                  error: `Número ${cleanNumber} no válido o sin WhatsApp` 
+                  error: `Error en formato de mensaje o número no válido: ${errorText}` 
                 };
               }
               
@@ -187,10 +181,7 @@ export class WhatsAppService {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
-      if (!config.enabled) {
-        onLog?.('error', 'WhatsApp no habilitado');
-        return { success: false, error: 'WhatsApp no habilitado' };
-      }
+      onLog?.('info', `Configuración WhatsApp obtenida`);
       
       const todayNews = await NewsService.getNews();
       onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);
@@ -222,11 +213,6 @@ export class WhatsAppService {
     try {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
-      
-      if (!config.enabled) {
-        onLog?.('error', 'WhatsApp no habilitado');
-        return { success: false, error: 'WhatsApp no habilitado' };
-      }
       
       const todayNews = await NewsService.getNews();
       onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);

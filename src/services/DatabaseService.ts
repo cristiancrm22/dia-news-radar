@@ -285,70 +285,102 @@ export class DatabaseService {
     }
   }
 
-  // WhatsApp config methods - CORREGIDO
+  // WhatsApp config methods - REMOVED enabled validations
   static async getUserWhatsAppConfig(userId?: string): Promise<WhatsAppConfig> {
     const currentUserId = userId || await this.getCurrentUserId();
     
-    console.log("Getting WhatsApp config for user:", currentUserId);
-    
-    const { data, error } = await supabase
-      .from('user_whatsapp_configs')
-      .select('*')
-      .eq('user_id', currentUserId)
-      .maybeSingle();
-    
-    if (error) {
-      console.error("Error getting WhatsApp config:", error);
-      throw error;
-    }
-    
-    console.log("WhatsApp config data:", data);
-    
-    return {
-      enabled: data?.is_active ?? false,
-      phoneNumber: data?.phone_number || "",
-      apiKey: data?.api_key || "",
-      connectionMethod: (data?.connection_method as "official" | "evolution" | "businesscloud") || "official",
-      evolutionApiUrl: data?.evolution_api_url || ""
-    };
-  }
-
-  static async updateUserWhatsAppConfig(config: WhatsAppConfig, userId?: string) {
-    const currentUserId = userId || await this.getCurrentUserId();
-    
-    console.log("Updating WhatsApp config for user:", currentUserId, "with config:", config);
-    
-    try {
-      const configData = {
-        user_id: currentUserId,
-        phone_number: config.phoneNumber || "",
-        api_key: config.apiKey || "",
-        connection_method: config.connectionMethod || "official",
-        evolution_api_url: config.evolutionApiUrl || "",
-        is_active: config.enabled || false,
-        updated_at: new Date().toISOString()
+    if (!currentUserId) {
+      console.log("No user ID, returning default WhatsApp config");
+      return {
+        phoneNumber: "",
+        apiKey: "",
+        connectionMethod: "official",
+        evolutionApiUrl: ""
       };
+    }
 
-      console.log("Config data to upsert:", configData);
+    console.log("Getting WhatsApp config for user:", currentUserId);
 
+    try {
       const { data, error } = await supabase
         .from('user_whatsapp_configs')
-        .upsert(configData, {
-          onConflict: 'user_id'
-        })
-        .select()
+        .select('*')
+        .eq('user_id', currentUserId)
         .single();
 
-      if (error) {
-        console.error("Error updating WhatsApp config:", error);
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error fetching WhatsApp config:", error);
         throw error;
       }
 
+      if (!data) {
+        console.log("No WhatsApp config found, returning default");
+        return {
+          phoneNumber: "",
+          apiKey: "",
+          connectionMethod: "official",
+          evolutionApiUrl: ""
+        };
+      }
+
+      console.log("WhatsApp config data:", data);
+
+      // Validate connection_method and provide fallback
+      const connectionMethod = data.connection_method;
+      const validConnectionMethods = ["official", "evolution", "businesscloud"] as const;
+      const isValidConnectionMethod = validConnectionMethods.includes(connectionMethod as any);
+
+      return {
+        phoneNumber: data.phone_number || "",
+        apiKey: data.api_key || "",
+        connectionMethod: isValidConnectionMethod ? connectionMethod as "official" | "evolution" | "businesscloud" : "official",
+        evolutionApiUrl: data.evolution_api_url || ""
+      };
+    } catch (error) {
+      console.error("Error in getUserWhatsAppConfig:", error);
+      return {
+        phoneNumber: "",
+        apiKey: "",
+        connectionMethod: "official",
+        evolutionApiUrl: ""
+      };
+    }
+  }
+
+  static async updateUserWhatsAppConfig(config: WhatsAppConfig, userId?: string): Promise<void> {
+    const currentUserId = userId || await this.getCurrentUserId();
+    
+    if (!currentUserId) {
+      throw new Error("Usuario no autenticado");
+    }
+
+    console.log("Updating WhatsApp config:", config);
+
+    try {
+      const { data, error } = await supabase
+        .from('user_whatsapp_configs')
+        .upsert({
+          user_id: currentUserId,
+          phone_number: config.phoneNumber || "",
+          api_key: config.apiKey || "",
+          connection_method: config.connectionMethod || "official",
+          evolution_api_url: config.evolutionApiUrl || "",
+          is_active: true, // Always active now
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        })
+        .select();
+
+      if (error) {
+        console.error("Error updating WhatsApp config:", error);
+        throw new Error(`Error al actualizar configuración de WhatsApp: ${error.message || error.details || 'Error desconocido'}`);
+      }
+
       console.log("WhatsApp config updated successfully:", data);
-      return data;
-    } catch (error: any) {
-      console.error("Exception in updateUserWhatsAppConfig:", error);
-      throw new Error(`Error al actualizar configuración de WhatsApp: ${error.message}`);
+    } catch (error) {
+      console.error("Error in updateUserWhatsAppConfig:", error);
+      throw error;
     }
   }
 

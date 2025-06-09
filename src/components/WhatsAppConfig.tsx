@@ -1,9 +1,7 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +17,6 @@ import WhatsAppNewsManager from "@/components/WhatsAppNewsManager";
 const WhatsAppConfig = () => {
   const { logs, addLog, clearLogs } = useLogs();
   const [config, setConfig] = useState<WhatsAppConfigType>({
-    enabled: false,
     phoneNumber: "",
     apiKey: "",
     connectionMethod: "official",
@@ -47,24 +44,6 @@ const WhatsAppConfig = () => {
     loadConfig();
   }, []);
 
-  const handleEnabledChange = async (enabled: boolean) => {
-    try {
-      const newConfig = { ...config, enabled };
-      setConfig(newConfig);
-      await NewsService.updateWhatsAppConfig(newConfig);
-      console.log("Config saved after enabled change");
-      addLog('info', 'whatsapp', `WhatsApp ${enabled ? 'habilitado' : 'deshabilitado'}`);
-    } catch (error) {
-      console.error("Error saving config:", error);
-      addLog('error', 'whatsapp', `Error al cambiar estado: ${error.message}`);
-      toast({
-        title: "Error",
-        description: "Error al cambiar el estado de WhatsApp",
-        variant: "destructive"
-      });
-    }
-  };
-
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newConfig = { ...config, phoneNumber: e.target.value };
     setConfig(newConfig);
@@ -75,22 +54,10 @@ const WhatsAppConfig = () => {
     setConfig(newConfig);
   };
 
-  const handleConnectionMethodChange = async (value: "official" | "evolution" | "businesscloud") => {
-    try {
-      const newConfig = { ...config, connectionMethod: value };
-      setConfig(newConfig);
-      await NewsService.updateWhatsAppConfig(newConfig);
-      console.log("Config saved after connection method change");
-      addLog('info', 'whatsapp', `Método de conexión cambiado a: ${value}`);
-    } catch (error) {
-      console.error("Error saving config:", error);
-      addLog('error', 'whatsapp', `Error al cambiar método de conexión: ${error.message}`);
-      toast({
-        title: "Error",
-        description: "Error al cambiar el método de conexión",
-        variant: "destructive"
-      });
-    }
+  const handleConnectionMethodChange = (value: "official" | "evolution" | "businesscloud") => {
+    const newConfig = { ...config, connectionMethod: value };
+    setConfig(newConfig);
+    console.log("Connection method changed to:", value);
   };
 
   const handleEvolutionApiUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,21 +176,7 @@ const WhatsAppConfig = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="whatsapp-enabled" className="flex flex-col space-y-1">
-                  <span>Habilitar WhatsApp</span>
-                  <span className="font-normal text-sm text-muted-foreground">
-                    Activa la integración con WhatsApp
-                  </span>
-                </Label>
-                <Switch
-                  id="whatsapp-enabled"
-                  checked={config.enabled}
-                  onCheckedChange={handleEnabledChange}
-                />
-              </div>
-
-              <div className="space-y-4 pt-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone-number">Número de WhatsApp</Label>
                   <Input
