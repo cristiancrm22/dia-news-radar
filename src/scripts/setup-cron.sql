@@ -3,6 +3,9 @@
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
+-- Eliminar job anterior si existe
+SELECT cron.unschedule('send-scheduled-whatsapp-news');
+
 -- Crear cron job para ejecutar el envío de noticias programadas cada minuto
 -- Esto permitirá verificar si es hora de enviar mensajes a los suscriptores
 SELECT cron.schedule(
@@ -19,4 +22,7 @@ SELECT cron.schedule(
 );
 
 -- Ver los cron jobs activos
-SELECT * FROM cron.job;
+SELECT jobid, schedule, command FROM cron.job WHERE jobname = 'send-scheduled-whatsapp-news';
+
+-- Logs del cron job (útil para debugging)
+-- SELECT * FROM cron.job_run_details WHERE jobid IN (SELECT jobid FROM cron.job WHERE jobname = 'send-scheduled-whatsapp-news') ORDER BY start_time DESC LIMIT 10;

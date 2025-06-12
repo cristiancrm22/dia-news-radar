@@ -3,6 +3,7 @@
  */
 import { NewsItem, PythonScriptNews, PythonScriptResponse, PythonScriptExecutionStatus, PythonScriptParams, PythonScriptExecutionResponse } from "@/types/news";
 import { toast } from "sonner";
+import { RadarLoggingService } from './RadarLoggingService';
 
 // Define the API endpoint (this should be configured based on where the Python script is hosted)
 const PYTHON_API_ENDPOINT = '/api/scraper';
@@ -13,7 +14,7 @@ const API_CONFIG = {
   mockPythonExecution: false,
   mockCsvFilePath: '/data/radar/resultados.csv',
   pythonScriptPath: 'python3',
-  scriptPath: 'radar.py',
+  scriptPath: 'radar_optimo.py', // ACTUALIZADO para usar radar_optimo.py
   useProxy: false,
   proxyUrl: 'http://localhost:8000', // Local server URL
   connectionRetries: 3,
@@ -21,7 +22,7 @@ const API_CONFIG = {
 };
 
 /**
- * Options for news search
+ * Options for news search - ACTUALIZADO con nuevos parámetros
  */
 export interface NewsSearchOptions {
   keywords: string[];
@@ -110,7 +111,7 @@ const mockPythonResponse: PythonScriptResponse = {
     }
   ],
   output: [
-    "🚀 Iniciando radar de noticias...",
+    "🚀 Iniciando radar de noticias OPTIMIZADO v3...",
     "📰 Noticia: Los secretos del Plan Colchón, las dudas del FMI y el deseo oculto de Cristina",
     "📰 Noticia: Se postergó el plenario de Kicillof en Los Hornos", 
     "📰 Noticia: Espinosa criticó las políticas económicas del gobierno nacional",
@@ -119,7 +120,7 @@ const mockPythonResponse: PythonScriptResponse = {
 };
 
 /**
- * Generate a command to execute the Python script with the given parameters
+ * Generate a command to execute the Python script with the given parameters - ACTUALIZADO
  */
 function generatePythonCommand(params: PythonScriptParams): string {
   const pythonExe = params.pythonExecutable || API_CONFIG.pythonScriptPath;
@@ -130,7 +131,7 @@ function generatePythonCommand(params: PythonScriptParams): string {
   const sources = params.sources?.map(s => `"${s.replace(/"/g, '\\"')}"`).join(',') || '';
   const twitterUsers = params.twitterUsers?.map(u => `"${u.replace(/"/g, '\\"')}"`).join(',') || '';
   
-  // Build the command
+  // Build the command - ACTUALIZADO para radar_optimo.py
   let command = `${pythonExe} ${scriptPath}`;
   
   if (params.keywords && params.keywords.length > 0) {
@@ -149,8 +150,9 @@ function generatePythonCommand(params: PythonScriptParams): string {
     command += ` --output "${params.outputPath}"`;
   }
   
-  if (params.maxWorkers) {
-    command += ` --max-workers ${params.maxWorkers}`;
+  // NUEVOS parámetros para radar_optimo.py
+  if (params.maxResults && params.maxResults > 0) {
+    command += ` --max-results ${params.maxResults}`;
   }
   
   if (params.validateLinks) {
@@ -159,6 +161,10 @@ function generatePythonCommand(params: PythonScriptParams): string {
   
   if (params.currentDateOnly) {
     command += ' --today-only';
+  }
+  
+  if (params.deepScrape) {
+    command += ' --deep-scrape';
   }
   
   return command;
@@ -201,10 +207,28 @@ async function fetchWithRetries(url: string, options?: RequestInit, retries = AP
 }
 
 /**
- * Execute the Python script - REAL MODE ONLY
+ * Execute the Python script - ACTUALIZADO para radar_optimo.py
  */
 export async function executePythonScript(options: NewsSearchOptions): Promise<PythonScriptExecutionStatus> {
-  console.log("Starting REAL Python script execution with options:", options);
+  console.log("Starting REAL Python script execution with radar_optimo.py:", options);
+  
+  // NUEVO: Log de la ejecución con radar_optimo.py
+  const logId = await RadarLoggingService.logRadarExecution(
+    'executePythonScript_radar_optimo',
+    {
+      keywords: options.keywords || [],
+      sources: options.sources || [],
+      twitterUsers: options.twitterUsers || [],
+      validateLinks: options.validateLinks || false,
+      currentDateOnly: options.currentDateOnly || false,
+      deepScrape: options.deepScrape || false,
+      maxResults: options.maxResults,
+      pythonExecutable: options.pythonExecutable || 'python3',
+      script: 'radar_optimo.py'
+    }
+  );
+  
+  const startTime = Date.now();
   
   // Reset status
   pythonExecutionStatus.running = true;
@@ -213,27 +237,30 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
   pythonExecutionStatus.error = undefined;
   pythonExecutionStatus.startTime = new Date();
   pythonExecutionStatus.endTime = undefined;
-  pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias REAL..."];
+  pythonExecutionStatus.output = ["🚀 Iniciando radar de noticias OPTIMIZADO v3..."];
 
   try {
-    // CORREGIDO: Enviar arrays directamente, no como strings JSON
+    // ACTUALIZADO: Payload para radar_optimo.py
     const execPayload = {
       keywords: options.keywords || [],
       sources: options.sources || [],
       twitterUsers: options.twitterUsers || [],
       validateLinks: options.validateLinks || false,
       todayOnly: options.currentDateOnly || false,
+      deepScrape: options.deepScrape || false,
       outputPath: '/tmp/resultados_' + Date.now() + '.csv',
-      maxWorkers: 5,
+      maxResults: options.maxResults || 0,
       pythonExecutable: options.pythonExecutable || 'python3'
     };
 
-    console.log("Ejecutando con parámetros CORREGIDOS:", execPayload);
+    console.log("Ejecutando radar_optimo.py con parámetros:", execPayload);
     pythonExecutionStatus.output.push("🔗 Conectando con servidor Python...");
     pythonExecutionStatus.output.push(`📝 Keywords: ${JSON.stringify(execPayload.keywords)}`);
     pythonExecutionStatus.output.push(`🌐 Sources: ${execPayload.sources.length} fuentes`);
     pythonExecutionStatus.output.push(`📅 Today Only: ${execPayload.todayOnly}`);
     pythonExecutionStatus.output.push(`🔗 Validate Links: ${execPayload.validateLinks}`);
+    pythonExecutionStatus.output.push(`🔍 Deep Scrape: ${execPayload.deepScrape}`);
+    pythonExecutionStatus.output.push(`📊 Max Results: ${execPayload.maxResults || 'Sin límite'}`);
     
     const apiUrl = `${getApiBaseUrl()}${PYTHON_API_ENDPOINT}/execute`;
     const response = await fetchWithRetries(apiUrl, {
@@ -249,29 +276,55 @@ export async function executePythonScript(options: NewsSearchOptions): Promise<P
     }
     
     const data = await response.json() as PythonScriptExecutionResponse;
-    console.log("Script execution response:", data);
+    console.log("radar_optimo.py execution response:", data);
     
     if (data.status === 'success') {
-      pythonExecutionStatus.output.push(`🚀 Script ejecutándose con PID: ${data.pid}`);
-      return pollRealScriptExecution(data.pid);
+      pythonExecutionStatus.output.push(`🚀 radar_optimo.py ejecutándose con PID: ${data.pid}`);
+      const result = await pollRealScriptExecution(data.pid);
+      
+      // ACTUALIZADO: Log con éxito de radar_optimo.py
+      await RadarLoggingService.updateRadarLog(
+        logId,
+        'completed',
+        {
+          pid: data.pid,
+          csvPath: result.csvPath,
+          progress: result.progress,
+          output: result.output,
+          script: 'radar_optimo.py'
+        },
+        undefined,
+        startTime
+      );
+      
+      return result;
     } else {
-      throw new Error(data.error || 'Error desconocido ejecutando el script');
+      throw new Error(data.error || 'Error desconocido ejecutando radar_optimo.py');
     }
   } catch (error) {
     console.error("Error conectando con servidor Python:", error);
+    
+    // ACTUALIZADO: Log de error con radar_optimo.py
+    await RadarLoggingService.updateRadarLog(
+      logId,
+      'error',
+      undefined,
+      `Error de conexión con radar_optimo.py: ${error.message}`,
+      startTime
+    );
     
     pythonExecutionStatus.running = false;
     pythonExecutionStatus.completed = false;
     pythonExecutionStatus.error = `Error de conexión: ${error.message}`;
     pythonExecutionStatus.endTime = new Date();
     pythonExecutionStatus.output.push(`❌ Error de conexión: ${error.message}`);
-    pythonExecutionStatus.output.push("🔧 Asegúrese de que el servidor Python esté ejecutándose en http://localhost:8000");
+    pythonExecutionStatus.output.push("🔧 Asegúrese de que el servidor Python esté ejecutándose con radar_optimo.py en http://localhost:8000");
     
     toast.error("Error de conexión", {
-      description: "No se pudo conectar al servidor Python. Verifique que esté ejecutándose en localhost:8000"
+      description: "No se pudo conectar al servidor Python con radar_optimo.py. Verifique que esté ejecutándose en localhost:8000"
     });
     
-    throw error; // Re-throw the error instead of falling back to mock data
+    throw error;
   }
 }
 

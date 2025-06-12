@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const { spawn } = require('child_process');
@@ -18,7 +17,7 @@ const runningProcesses = new Map();
 // Endpoint to execute Python script
 app.post('/api/scraper/execute', (req, res) => {
   try {
-    const { keywords, sources, twitterUsers, validateLinks, todayOnly, outputPath, maxWorkers, pythonExecutable } = req.body;
+    const { keywords, sources, twitterUsers, validateLinks, todayOnly, outputPath, maxWorkers, pythonExecutable, maxResults, deepScrape } = req.body;
     
     console.log('Executing Python script with params:', {
       keywords: keywords,
@@ -27,13 +26,14 @@ app.post('/api/scraper/execute', (req, res) => {
       validateLinks,
       todayOnly,
       outputPath,
-      maxWorkers
+      maxResults,
+      deepScrape
     });
     
     // Prepare arguments for the Python script
     const args = [];
     
-    // CORREGIDO: Pasar parámetros como JSON strings válidos
+    // ACTUALIZADO: Pasar parámetros como JSON strings válidos para radar_optimo.py
     if (keywords && Array.isArray(keywords) && keywords.length > 0) {
       args.push('--keywords');
       args.push(JSON.stringify(keywords));
@@ -54,9 +54,10 @@ app.post('/api/scraper/execute', (req, res) => {
       args.push(outputPath);
     }
     
-    if (maxWorkers && typeof maxWorkers === 'number') {
-      args.push('--max-workers');
-      args.push(maxWorkers.toString());
+    // NUEVO: Parámetros específicos de radar_optimo.py
+    if (maxResults && typeof maxResults === 'number' && maxResults > 0) {
+      args.push('--max-results');
+      args.push(maxResults.toString());
     }
     
     if (validateLinks === true) {
@@ -67,9 +68,13 @@ app.post('/api/scraper/execute', (req, res) => {
       args.push('--today-only');
     }
     
-    // Execute the Python script
+    if (deepScrape === true) {
+      args.push('--deep-scrape');
+    }
+    
+    // Execute the Python script - ACTUALIZADO para usar radar_optimo.py
     const pythonCommand = pythonExecutable || 'python3';
-    const scriptPath = path.join(__dirname, 'radar.py');
+    const scriptPath = path.join(__dirname, 'radar_optimo.py');
     
     console.log(`Executing: ${pythonCommand} ${scriptPath} ${args.join(' ')}`);
     console.log('Full command args:', [scriptPath, ...args]);
@@ -187,42 +192,134 @@ app.get('/api/scraper/csv', (req, res) => {
   }
 });
 
-// Nuevo endpoint para obtener noticias del día
+// Nuevo endpoint mejorado para obtener noticias del día
 app.get('/api/news/today', async (req, res) => {
   try {
     console.log('=== OBTENIENDO NOTICIAS DEL DÍA ===');
     
-    // Simular obtención de noticias (aquí puedes integrar tu lógica real)
-    const mockNews = [
-      {
-        id: 1,
-        title: "Kicillof anuncia nuevas medidas económicas para Buenos Aires",
-        summary: "El gobernador bonaerense presentó un paquete de medidas destinadas a fortalecer la economía provincial.",
-        date: new Date().toISOString(),
-        sourceUrl: "https://www.ejemplo.com/noticia1",
-        sourceName: "La Nación"
-      },
-      {
-        id: 2,
-        title: "Magario se reúne con intendentes del conurbano",
-        summary: "La vicegobernadora coordinó acciones con los jefes comunales para mejorar la gestión local.",
-        date: new Date().toISOString(),
-        sourceUrl: "https://www.ejemplo.com/noticia2",
-        sourceName: "Clarín"
+    // Buscar archivos CSV recientes en /tmp
+    const fs = require('fs');
+    const path = require('path');
+    const tmpDir = '/tmp';
+    
+    let latestCsvFile = null;
+    let latestTime = 0;
+    
+    try {
+      const files = fs.readdirSync(tmpDir);
+      for (const file of files) {
+        if (file.startsWith('resultados_') && file.endsWith('.csv')) {
+          const filePath = path.join(tmpDir, file);
+          const stats = fs.statSync(filePath);
+          if (stats.mtime.getTime() > latestTime) {
+            latestTime = stats.mtime.getTime();
+            latestCsvFile = filePath;
+          }
+        }
       }
-    ];
+    } catch (error) {
+      console.log('Error leyendo directorio /tmp:', error.message);
+    }
+    
+    let news = [];
+    
+    if (latestCsvFile && fs.existsSync(latestCsvFile)) {
+      console.log(`Leyendo archivo CSV: ${latestCsvFile}`);
+      
+      try {
+        const csvContent = fs.readFileSync(latestCsvFile, 'utf8');
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        
+        if (lines.length > 1) {
+          const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+          console.log('Headers CSV:', headers);
+          
+          for (let i = 1; i < lines.length; i++) {
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let j = 0; j < lines[i].length; j++) {
+              const char = lines[i][j];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                values.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            values.push(current.trim());
+            
+            if (values.length >= 4) {
+              const newsItem = {
+                id: `news_${i}`,
+                title: values[0] || 'Sin título',
+                summary: values[3] || values[1] || 'Sin resumen',
+                date: values[1] || new Date().toISOString(),
+                sourceUrl: values[2] || '#',
+                sourceName: values[4] || 'Fuente desconocida',
+                relevanceScore: values[5] || '1'
+              };
+              
+              news.push(newsItem);
+            }
+          }
+        }
+        
+        console.log(`Noticias procesadas del CSV: ${news.length}`);
+      } catch (error) {
+        console.error('Error procesando CSV:', error);
+      }
+    }
+    
+    // Si no hay noticias del CSV, usar noticias mock
+    if (news.length === 0) {
+      console.log('No hay CSV disponible, usando noticias mock');
+      news = [
+        {
+          id: "1",
+          title: "Kicillof anuncia nuevas medidas económicas para Buenos Aires",
+          summary: "El gobernador bonaerense presentó un paquete de medidas destinadas a fortalecer la economía provincial.",
+          date: new Date().toISOString(),
+          sourceUrl: "https://www.ejemplo.com/noticia1",
+          sourceName: "La Nación"
+        },
+        {
+          id: "2", 
+          title: "Magario se reúne con intendentes del conurbano",
+          summary: "La vicegobernadora coordinó acciones con los jefes comunales para mejorar la gestión local.",
+          date: new Date().toISOString(),
+          sourceUrl: "https://www.ejemplo.com/noticia2",
+          sourceName: "Clarín"
+        },
+        {
+          id: "3",
+          title: "Espinosa presenta proyecto de ley en el Senado",
+          summary: "El senador provincial presentó una nueva iniciativa legislativa para mejorar la transparencia.",
+          date: new Date().toISOString(),
+          sourceUrl: "https://www.ejemplo.com/noticia3", 
+          sourceName: "Página 12"
+        }
+      ];
+    }
     
     res.json({
       success: true,
-      news: mockNews,
-      count: mockNews.length
+      news: news,
+      count: news.length,
+      source: latestCsvFile ? 'csv' : 'mock',
+      timestamp: new Date().toISOString()
     });
     
   } catch (error) {
     console.error('Error obteniendo noticias:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      news: [],
+      count: 0
     });
   }
 });

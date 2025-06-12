@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import LogViewer from "@/components/LogViewer";
 import WhatsAppSubscriptionManager from "@/components/WhatsAppSubscriptionManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, Send, MessageSquare, Users } from "lucide-react";
+import RadarLogsViewer from "@/components/RadarLogsViewer";
 
 const WhatsAppNewsManager = () => {
   const { logs, addLog, clearLogs } = useLogs();
@@ -78,9 +78,10 @@ const WhatsAppNewsManager = () => {
       </Card>
 
       <Tabs defaultValue="test" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="test">Prueba Manual</TabsTrigger>
           <TabsTrigger value="scheduled">Envío Programado</TabsTrigger>
+          <TabsTrigger value="radar-logs">Logs Radar.py</TabsTrigger>
         </TabsList>
         
         <TabsContent value="test" className="space-y-6">
@@ -128,6 +129,10 @@ const WhatsAppNewsManager = () => {
         
         <TabsContent value="scheduled" className="space-y-6">
           <WhatsAppSubscriptionManager />
+        </TabsContent>
+
+        <TabsContent value="radar-logs" className="space-y-6">
+          <RadarLogsViewer />
         </TabsContent>
       </Tabs>
 

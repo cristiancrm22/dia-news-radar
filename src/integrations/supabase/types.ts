@@ -33,6 +33,45 @@ export type Database = {
         }
         Relationships: []
       }
+      radar_logs: {
+        Row: {
+          created_at: string
+          error: string | null
+          execution_time_ms: number | null
+          id: string
+          operation: string
+          parameters: Json
+          results: Json | null
+          status: string
+          timestamp: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          execution_time_ms?: number | null
+          id: string
+          operation: string
+          parameters: Json
+          results?: Json | null
+          status: string
+          timestamp?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          execution_time_ms?: number | null
+          id?: string
+          operation?: string
+          parameters?: Json
+          results?: Json | null
+          status?: string
+          timestamp?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       user_email_configs: {
         Row: {
           created_at: string | null

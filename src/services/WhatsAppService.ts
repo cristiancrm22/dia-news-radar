@@ -171,6 +171,7 @@ export class WhatsAppService {
     return this.sendMessage(config, testPhone, testMessage, onLog);
   }
 
+  // CORREGIDO: Usar el mismo método de obtención de noticias que la pantalla principal
   static async requestTodayNews(
     phoneNumber: string,
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -184,7 +185,8 @@ export class WhatsAppService {
       
       onLog?.('info', `Configuración WhatsApp obtenida`);
       
-      const todayNews = await NewsService.getNews();
+      // CORREGIDO: Usar el mismo método que la pantalla principal
+      const todayNews = await this.getTodayNewsFromMainSystem(onLog);
       onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);
       
       let newsMessage: string;
@@ -204,6 +206,42 @@ export class WhatsAppService {
     }
   }
 
+  // NUEVO: Método para obtener noticias del sistema principal
+  private static async getTodayNewsFromMainSystem(
+    onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
+  ): Promise<any[]> {
+    try {
+      onLog?.('info', 'Obteniendo noticias del sistema principal...');
+      
+      // Primero intentar obtener noticias ya procesadas
+      const response = await fetch("http://localhost:8000/api/news/today", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        onLog?.('info', `Noticias obtenidas del cache: ${data.news?.length || 0}`);
+        if (data.news && data.news.length > 0) {
+          return data.news;
+        }
+      }
+      
+      // Si no hay noticias en cache, usar el servicio principal
+      const NewsService = (await import('./NewsService')).default;
+      const newsFromService = await NewsService.getNews();
+      onLog?.('info', `Noticias del servicio principal: ${newsFromService.length}`);
+      
+      return newsFromService;
+      
+    } catch (error: any) {
+      onLog?.('error', `Error obteniendo noticias: ${error.message}`);
+      return [];
+    }
+  }
+
   static async sendScheduledNews(
     phoneNumbers: string[],
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
@@ -215,7 +253,8 @@ export class WhatsAppService {
       const NewsService = (await import('./NewsService')).default;
       const config = await NewsService.getWhatsAppConfig();
       
-      const todayNews = await NewsService.getNews();
+      // CORREGIDO: Usar el mismo método que requestTodayNews
+      const todayNews = await this.getTodayNewsFromMainSystem(onLog);
       onLog?.('info', `Noticias obtenidas: ${todayNews.length}`);
       
       let newsMessage: string;
@@ -275,7 +314,7 @@ export class WhatsAppService {
     let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
     
-    // CORREGIDO: Enviar TODAS las noticias en lugar de limitar a 5
+    // Enviar TODAS las noticias
     news.forEach((item, index) => {
       message += `*${index + 1}.* ${item.title}\n`;
       if (item.summary) {

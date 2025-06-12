@@ -89,7 +89,7 @@ export interface PythonScriptExecutionStatus {
   output: string[]; // Terminal output from the Python script
 }
 
-// Python script execution parameters
+// Python script execution parameters - ACTUALIZADO con nuevas propiedades
 export interface PythonScriptParams {
   keywords: string[];
   sources: string[];
@@ -98,7 +98,9 @@ export interface PythonScriptParams {
   maxWorkers?: number;
   validateLinks?: boolean;
   currentDateOnly?: boolean;
-  pythonExecutable?: string; // Added missing property
+  pythonExecutable?: string;
+  maxResults?: number; // NUEVO: Máximo de resultados
+  deepScrape?: boolean; // NUEVO: Scraping profundo
 }
 
 // Python script execution API response

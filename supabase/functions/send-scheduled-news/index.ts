@@ -30,13 +30,14 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("=== PROCESANDO ENVÍO PROGRAMADO ===");
     
     const body = await req.json();
-    const { type, scheduled }: ScheduledNewsRequest = body;
+    const { type, scheduled, force }: ScheduledNewsRequest = body;
     
     let results = {
       whatsappSent: 0,
       emailsSent: 0,
       errors: [] as string[],
-      skipped: 0
+      skipped: 0,
+      totalNews: 0
     };
 
     // Si es envío programado, obtener suscripciones activas
@@ -65,7 +66,7 @@ const handler = async (req: Request): Promise<Response> => {
         return new Response(JSON.stringify({ 
           success: true,
           message: "No hay suscripciones activas",
-          results: { sent: 0, skipped: 0, errors: [] }
+          results: { sent: 0, skipped: 0, errors: [], totalNews: 0 }
         }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
@@ -78,17 +79,18 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`Hora actual: ${currentTime}, Día: ${currentDay}`);
       console.log(`Suscripciones encontradas: ${subscriptions.length}`);
 
-      // Obtener noticias
-      const todayNews = await getTodayNewsFromPython();
+      // CORREGIDO: Obtener noticias usando el mismo método que la pantalla principal
+      const todayNews = await getTodayNewsFromPrimarySystem();
       console.log(`Noticias obtenidas: ${todayNews.length}`);
+      results.totalNews = todayNews.length;
       
       for (const subscription of subscriptions) {
         try {
-          // Verificar si es el momento de enviar
-          const shouldSend = shouldSendMessage(subscription, currentTime, currentDay);
+          // Verificar si es el momento de enviar (con tolerancia de 2 minutos)
+          const shouldSend = force || shouldSendMessage(subscription, currentTime, currentDay);
           
-          if (!shouldSend) {
-            console.log(`Saltando suscripción ${subscription.id} - no es el momento`);
+          if (!shouldSend && !force) {
+            console.log(`Saltando suscripción ${subscription.id} - no es el momento (${subscription.scheduled_time} vs ${currentTime})`);
             results.skipped++;
             continue;
           }
@@ -131,7 +133,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({ 
       success: true,
       results,
-      message: `Enviado: ${results.whatsappSent} WhatsApp, ${results.emailsSent} emails`
+      message: `Enviado: ${results.whatsappSent} WhatsApp, ${results.emailsSent} emails. Noticias: ${results.totalNews}`
     }), {
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
@@ -149,8 +151,16 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 function shouldSendMessage(subscription: any, currentTime: string, currentDay: number): boolean {
-  // Verificar hora (con tolerancia de 1 minuto)
-  if (subscription.scheduled_time !== currentTime) {
+  // Extraer hora y minuto para comparación con tolerancia
+  const [currentHour, currentMinute] = currentTime.split(':').map(Number);
+  const [schedHour, schedMinute] = subscription.scheduled_time.split(':').map(Number);
+  
+  // Tolerancia de 2 minutos
+  const currentTotalMinutes = currentHour * 60 + currentMinute;
+  const schedTotalMinutes = schedHour * 60 + schedMinute;
+  const timeDiff = Math.abs(currentTotalMinutes - schedTotalMinutes);
+  
+  if (timeDiff > 2) {
     return false;
   }
 
@@ -168,52 +178,171 @@ function shouldSendMessage(subscription: any, currentTime: string, currentDay: n
   return false;
 }
 
-async function getTodayNewsFromPython(): Promise<any[]> {
+// CORREGIDO: Nueva función que obtiene noticias usando el mismo método que la pantalla principal
+async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
   try {
-    console.log("Obteniendo noticias del servidor Python...");
+    console.log("=== OBTENIENDO NOTICIAS DEL SISTEMA PRINCIPAL ===");
     
-    const response = await fetch("http://localhost:8000/api/news/today", {
-      method: "GET",
+    // Obtener configuración del usuario del sistema (usar el primer usuario activo como fallback)
+    const { data: userConfigs } = await supabase
+      .from('user_search_settings')
+      .select('*')
+      .limit(1);
+    
+    const { data: keywords } = await supabase
+      .from('user_keywords')
+      .select('keyword')
+      .limit(10);
+      
+    const { data: sources } = await supabase
+      .from('user_news_sources')
+      .select('url')
+      .eq('enabled', true)
+      .limit(15);
+
+    if (!keywords || !sources || keywords.length === 0 || sources.length === 0) {
+      console.log("No hay configuración de keywords o fuentes");
+      return [];
+    }
+
+    const config = userConfigs?.[0] || {
+      validate_links: true,
+      current_date_only: true,
+      deep_scrape: true,
+      max_results: 50
+    };
+
+    // CORREGIDO: Ejecutar el mismo script que usa la pantalla principal
+    const pythonServerUrl = "http://host.docker.internal:8000"; // URL para acceder al servidor desde el contenedor
+    
+    const executeResponse = await fetch(`${pythonServerUrl}/api/scraper/execute`, {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
-      }
+      },
+      body: JSON.stringify({
+        keywords: keywords.map(k => k.keyword),
+        sources: sources.map(s => s.url),
+        twitterUsers: [],
+        validateLinks: config.validate_links,
+        todayOnly: config.current_date_only,
+        maxResults: config.max_results,
+        deepScrape: config.deep_scrape,
+        outputPath: `/tmp/scheduled_news_${Date.now()}.csv`
+      })
     });
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Noticias obtenidas:", data.news?.length || 0);
-      return data.news || [];
+
+    if (!executeResponse.ok) {
+      console.error(`Error ejecutando scraper: ${executeResponse.status}`);
+      return [];
     }
+
+    const executeData = await executeResponse.json();
+    console.log("Scraper ejecutado:", executeData);
+
+    // Esperar a que termine el proceso
+    if (executeData.pid) {
+      let attempts = 0;
+      const maxAttempts = 30; // 5 minutos máximo
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 segundos
+        
+        try {
+          const statusResponse = await fetch(`${pythonServerUrl}/api/scraper/status?pid=${executeData.pid}`);
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            console.log(`Estado del scraper: ${statusData.status}`);
+            
+            if (statusData.status === 'completed') {
+              // Obtener el CSV generado
+              if (statusData.csvPath) {
+                const csvResponse = await fetch(`${pythonServerUrl}/api/scraper/csv?path=${encodeURIComponent(statusData.csvPath)}`);
+                if (csvResponse.ok) {
+                  const csvContent = await csvResponse.text();
+                  return parseCSVToNews(csvContent);
+                }
+              }
+              break;
+            } else if (statusData.status === 'error') {
+              console.error("Error en el scraper:", statusData.error);
+              break;
+            }
+          }
+        } catch (error) {
+          console.error("Error verificando estado:", error);
+        }
+        
+        attempts++;
+      }
+    }
+
+    console.log("No se pudieron obtener noticias del sistema principal");
+    return [];
     
-    console.log("No se pudieron obtener noticias del servidor Python");
   } catch (error) {
-    console.error("Error conectando con servidor Python:", error);
+    console.error("Error obteniendo noticias del sistema principal:", error);
+    return [];
   }
-  
-  // Fallback a noticias mock
-  return [
-    {
-      id: "1",
-      title: "Noticias del día disponibles",
-      summary: "Resumen automático de las principales noticias.",
-      date: new Date().toISOString(),
-      sourceUrl: "#",
-      sourceName: "News Radar"
+}
+
+function parseCSVToNews(csvContent: string): any[] {
+  try {
+    const lines = csvContent.split('\n').filter(line => line.trim());
+    if (lines.length <= 1) return [];
+    
+    const news = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let j = 0; j < lines[i].length; j++) {
+        const char = lines[i][j];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim().replace(/^"(.*)"$/, '$1'));
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim().replace(/^"(.*)"$/, '$1'));
+      
+      if (values.length >= 4) {
+        news.push({
+          title: values[0] || 'Sin título',
+          summary: values[3] || 'Sin resumen',
+          date: values[1] || new Date().toISOString(),
+          sourceUrl: values[2] || '#',
+          sourceName: values[4] || 'Fuente desconocida',
+          relevanceScore: values[5] || '1'
+        });
+      }
     }
-  ];
+    
+    console.log(`Noticias parseadas del CSV: ${news.length}`);
+    return news;
+  } catch (error) {
+    console.error("Error parseando CSV:", error);
+    return [];
+  }
 }
 
 function formatNewsForWhatsApp(news: any[]): string {
   let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
   
-  // CORREGIDO: Enviar TODAS las noticias en lugar de limitar a 5
+  // Mostrar todas las noticias disponibles
   news.forEach((item, index) => {
     message += `*${index + 1}.* ${item.title}\n`;
-    if (item.summary) {
-      message += `📝 ${item.summary.substring(0, 100)}...\n`;
+    if (item.summary || item.description) {
+      const summary = item.summary || item.description;
+      message += `📝 ${summary.substring(0, 100)}...\n`;
     }
-    message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
+    message += `📰 ${item.sourceName || item.source || 'Fuente desconocida'}\n`;
     if (item.sourceUrl && item.sourceUrl !== "#") {
       message += `🔗 ${item.sourceUrl}\n`;
     }
@@ -233,11 +362,22 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
     const instanceName = Deno.env.get("WHATSAPP_INSTANCE_NAME") || "SenadoN8N";
     
     if (!evolutionApiUrl) {
-      console.error("Evolution API URL no configurada");
+      console.error("Evolution API URL no configurada en variables de entorno");
       return false;
     }
     
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
+    // Limpiar número de teléfono
+    let cleanNumber = phoneNumber.replace(/\D/g, '');
+    
+    // Si no empieza con código de país, agregar 54 (Argentina)
+    if (!cleanNumber.startsWith('54') && cleanNumber.length >= 10) {
+      cleanNumber = '54' + cleanNumber;
+    }
+    
+    if (cleanNumber.length < 12) {
+      console.error(`Número inválido: ${phoneNumber} -> ${cleanNumber}`);
+      return false;
+    }
     
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
@@ -251,6 +391,8 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
       number: cleanNumber,
       text: message
     };
+    
+    console.log(`Enviando WhatsApp a ${cleanNumber} vía ${evolutionApiUrl}`);
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -266,7 +408,8 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
       clearTimeout(timeoutId);
       
       if (response.ok) {
-        console.log(`WhatsApp enviado exitosamente a ${phoneNumber}`);
+        const result = await response.json();
+        console.log(`WhatsApp enviado exitosamente a ${phoneNumber}:`, result);
         return true;
       } else {
         const errorText = await response.text();
