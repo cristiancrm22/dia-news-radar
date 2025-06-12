@@ -214,12 +214,7 @@ export class WhatsAppService {
       onLog?.('info', 'Obteniendo noticias del sistema principal...');
       
       // Primero intentar obtener noticias ya procesadas
-      const response = await fetch("http://localhost:8000/api/news/today", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        }
-      });
+      const response = await fetch("http://localhost:8000/api/news/today");
       
       if (response.ok) {
         const data = await response.json();
@@ -310,6 +305,7 @@ export class WhatsAppService {
     }
   }
   
+  // CORREGIDO: Formatear mensaje sin enlaces duplicados
   private static formatNewsForWhatsApp(news: any[]): string {
     let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -321,7 +317,8 @@ export class WhatsAppService {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
       message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
-      if (item.sourceUrl) {
+      // CORREGIDO: Solo incluir el link de la noticia si existe y es válido
+      if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
         message += `🔗 ${item.sourceUrl}\n`;
       }
       message += "\n";

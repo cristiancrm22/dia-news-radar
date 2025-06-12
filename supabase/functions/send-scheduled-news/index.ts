@@ -40,8 +40,8 @@ const handler = async (req: Request): Promise<Response> => {
       totalNews: 0
     };
 
-    // Si es envío programado, obtener suscripciones activas
-    if (scheduled) {
+    // Si es envío programado o forzado, obtener suscripciones activas
+    if (scheduled || force) {
       console.log("Procesando suscripciones programadas...");
       
       // Obtener suscripciones activas de WhatsApp
@@ -86,7 +86,7 @@ const handler = async (req: Request): Promise<Response> => {
       
       for (const subscription of subscriptions) {
         try {
-          // Verificar si es el momento de enviar (con tolerancia de 2 minutos)
+          // CORREGIDO: Si es force (envío manual), enviar a todos
           const shouldSend = force || shouldSendMessage(subscription, currentTime, currentDay);
           
           if (!shouldSend && !force) {
@@ -104,7 +104,7 @@ const handler = async (req: Request): Promise<Response> => {
             newsMessage = formatNewsForWhatsApp(todayNews);
           }
 
-          // Enviar mensaje vía WhatsApp
+          // CORREGIDO: Enviar mensaje vía WhatsApp con mejor manejo de errores
           const sent = await sendWhatsAppMessage(subscription.phone_number, newsMessage);
           
           if (sent) {
@@ -331,6 +331,7 @@ function parseCSVToNews(csvContent: string): any[] {
   }
 }
 
+// CORREGIDO: Formatear mensaje sin enlaces duplicados
 function formatNewsForWhatsApp(news: any[]): string {
   let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -343,7 +344,8 @@ function formatNewsForWhatsApp(news: any[]): string {
       message += `📝 ${summary.substring(0, 100)}...\n`;
     }
     message += `📰 ${item.sourceName || item.source || 'Fuente desconocida'}\n`;
-    if (item.sourceUrl && item.sourceUrl !== "#") {
+    // CORREGIDO: Solo incluir el link de la noticia si existe y es válido
+    if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
       message += `🔗 ${item.sourceUrl}\n`;
     }
     message += "\n";
@@ -355,6 +357,7 @@ function formatNewsForWhatsApp(news: any[]): string {
   return message;
 }
 
+// CORREGIDO: Función de envío de WhatsApp mejorada
 async function sendWhatsAppMessage(phoneNumber: string, message: string): Promise<boolean> {
   try {
     const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
@@ -394,33 +397,55 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
     
     console.log(`Enviando WhatsApp a ${cleanNumber} vía ${evolutionApiUrl}`);
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-    
-    try {
-      const response = await fetch(`${evolutionApiUrl}/message/sendText/${instanceName}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`WhatsApp enviado exitosamente a ${phoneNumber}:`, result);
-        return true;
-      } else {
-        const errorText = await response.text();
-        console.error(`Error enviando WhatsApp a ${phoneNumber}: ${response.status} - ${errorText}`);
+    // CORREGIDO: Intentar múltiples endpoints como en WhatsAppService
+    const apiUrls = [
+      `${evolutionApiUrl}/message/sendText/${instanceName}`,
+      `${evolutionApiUrl}/message/send-text/${instanceName}`,
+      `${evolutionApiUrl}/send-message/${instanceName}`
+    ];
+
+    for (const apiUrl of apiUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log(`WhatsApp enviado exitosamente a ${phoneNumber}:`, result);
+          return true;
+        } else {
+          const errorText = await response.text();
+          console.error(`Error enviando WhatsApp a ${phoneNumber} con ${apiUrl}: ${response.status} - ${errorText}`);
+          
+          // Si es 404, probar siguiente URL
+          if (response.status === 404) {
+            continue;
+          }
+          
+          return false;
+        }
+      } catch (fetchError: any) {
+        console.error(`Error de conexión enviando WhatsApp a ${phoneNumber} con ${apiUrl}:`, fetchError);
+        
+        // Si no es el último URL, continuar
+        if (apiUrl !== apiUrls[apiUrls.length - 1]) {
+          continue;
+        }
+        
         return false;
       }
-    } catch (fetchError: any) {
-      clearTimeout(timeoutId);
-      console.error(`Error de conexión enviando WhatsApp a ${phoneNumber}:`, fetchError);
-      return false;
     }
+    
+    return false;
     
   } catch (error: any) {
     console.error(`Error general enviando WhatsApp a ${phoneNumber}:`, error);

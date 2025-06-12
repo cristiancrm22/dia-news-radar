@@ -203,7 +203,8 @@ export class ScheduledWhatsAppService {
       const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
         body: { 
           type: 'whatsapp', 
-          scheduled: true 
+          scheduled: true,
+          force: true // CORREGIDO: Forzar envío para testing manual
         }
       });
 
@@ -213,7 +214,7 @@ export class ScheduledWhatsAppService {
       }
 
       console.log('Resultado del procesamiento:', data);
-      return { success: true, results: data.results };
+      return { success: true, results: data };
 
     } catch (error: any) {
       console.error('Error in processScheduledMessages:', error);
@@ -221,10 +222,22 @@ export class ScheduledWhatsAppService {
     }
   }
 
+  // CORREGIDO: Método de envío inmediato mejorado
   static async sendNewsToSubscribers(): Promise<{ success: boolean; results?: any; error?: string }> {
     try {
       console.log('=== ENVÍO INMEDIATO A SUSCRIPTORES ===');
       
+      // Obtener configuración de WhatsApp
+      const NewsService = (await import('./NewsService')).default;
+      const config = await NewsService.getWhatsAppConfig();
+      
+      console.log('Configuración WhatsApp:', config);
+      
+      // Verificar que la configuración esté completa
+      if (!config.evolutionApiUrl || config.evolutionApiUrl.trim() === '') {
+        return { success: false, error: 'Evolution API URL no configurada. Configure WhatsApp primero.' };
+      }
+
       // Obtener todas las suscripciones activas
       const subscriptionsResult = await this.getSubscriptions();
       if (!subscriptionsResult.success || !subscriptionsResult.subscriptions) {
@@ -237,24 +250,18 @@ export class ScheduledWhatsAppService {
         return { success: false, error: 'No hay suscripciones activas' };
       }
 
-      // Obtener noticias del día
-      let news: any[] = [];
-      try {
-        const response = await fetch("http://localhost:8000/api/news/today");
-        if (response.ok) {
-          const data = await response.json();
-          news = data.news || [];
-        }
-      } catch (error) {
-        console.log('Error obteniendo noticias, usando fallback');
-      }
+      console.log(`Suscripciones activas encontradas: ${activeSubscriptions.length}`);
 
-      // Formatear mensaje - CORREGIDO: usar todas las noticias
+      // Obtener noticias usando el mismo método que WhatsAppService
+      const todayNews = await this.getTodayNewsFromMainSystem();
+      console.log(`Noticias obtenidas: ${todayNews.length}`);
+
+      // Formatear mensaje
       let message: string;
-      if (news.length === 0) {
+      if (todayNews.length === 0) {
         message = "📰 *RESUMEN DE NOTICIAS*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
       } else {
-        message = this.formatNewsForWhatsApp(news);
+        message = this.formatNewsForWhatsApp(todayNews);
       }
 
       let sent = 0;
@@ -263,14 +270,10 @@ export class ScheduledWhatsAppService {
       // Enviar a cada suscriptor
       for (const subscription of activeSubscriptions) {
         try {
+          console.log(`Enviando a ${subscription.phoneNumber}...`);
+          
           const result = await WhatsAppService.sendMessage(
-            {
-              enabled: true,
-              phoneNumber: subscription.phoneNumber,
-              apiKey: '',
-              connectionMethod: 'evolution',
-              evolutionApiUrl: ''
-            },
+            config,
             subscription.phoneNumber,
             message,
             (type, msg) => console.log(`${type}: ${msg}`)
@@ -278,23 +281,28 @@ export class ScheduledWhatsAppService {
 
           if (result.success) {
             sent++;
+            console.log(`✅ Enviado exitosamente a ${subscription.phoneNumber}`);
             // Actualizar última fecha de envío
             await this.updateSubscription(subscription.id!, { lastSent: new Date().toISOString() });
           } else {
+            console.error(`❌ Error enviando a ${subscription.phoneNumber}: ${result.error}`);
             errors.push(`${subscription.phoneNumber}: ${result.error}`);
           }
         } catch (error: any) {
+          console.error(`💥 Error procesando ${subscription.phoneNumber}:`, error);
           errors.push(`${subscription.phoneNumber}: ${error.message}`);
         }
       }
 
+      console.log(`=== RESUMEN: ${sent} enviados, ${errors.length} errores ===`);
+
       return {
-        success: true,
+        success: sent > 0,
         results: {
           sent,
           total: activeSubscriptions.length,
           errors,
-          totalNews: news.length
+          totalNews: todayNews.length
         }
       };
 
@@ -304,6 +312,36 @@ export class ScheduledWhatsAppService {
     }
   }
 
+  // NUEVO: Método para obtener noticias (igual que en WhatsAppService)
+  private static async getTodayNewsFromMainSystem(): Promise<any[]> {
+    try {
+      console.log('Obteniendo noticias del sistema principal...');
+      
+      // Primero intentar obtener noticias ya procesadas
+      const response = await fetch("http://localhost:8000/api/news/today");
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`Noticias obtenidas del cache: ${data.news?.length || 0}`);
+        if (data.news && data.news.length > 0) {
+          return data.news;
+        }
+      }
+      
+      // Si no hay noticias en cache, usar el servicio principal
+      const NewsService = (await import('./NewsService')).default;
+      const newsFromService = await NewsService.getNews();
+      console.log(`Noticias del servicio principal: ${newsFromService.length}`);
+      
+      return newsFromService;
+      
+    } catch (error: any) {
+      console.error(`Error obteniendo noticias: ${error.message}`);
+      return [];
+    }
+  }
+
+  // CORREGIDO: Formatear mensaje sin enlaces duplicados
   private static formatNewsForWhatsApp(news: any[]): string {
     let message = "📰 *RESUMEN DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -315,7 +353,8 @@ export class ScheduledWhatsAppService {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
       message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
-      if (item.sourceUrl && item.sourceUrl !== "#") {
+      // CORREGIDO: Solo incluir el link de la noticia si existe y es válido
+      if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
         message += `🔗 ${item.sourceUrl}\n`;
       }
       message += "\n";
