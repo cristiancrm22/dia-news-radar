@@ -79,7 +79,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`Hora actual: ${currentTime}, Día: ${currentDay}`);
       console.log(`Suscripciones encontradas: ${subscriptions.length}`);
 
-      // CORREGIDO: Obtener noticias usando el mismo método que la pantalla principal
+      // CORREGIDO: Para envío programado, ejecutar búsqueda de noticias nuevas
       const todayNews = await getTodayNewsFromPrimarySystem();
       console.log(`Noticias obtenidas: ${todayNews.length}`);
       results.totalNews = todayNews.length;
@@ -178,10 +178,10 @@ function shouldSendMessage(subscription: any, currentTime: string, currentDay: n
   return false;
 }
 
-// CORREGIDO: Nueva función que obtiene noticias usando el mismo método que la pantalla principal
+// CORREGIDO: Nueva función que ejecuta búsqueda de noticias nuevas para envío programado
 async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
   try {
-    console.log("=== OBTENIENDO NOTICIAS DEL SISTEMA PRINCIPAL ===");
+    console.log("=== EJECUTANDO BÚSQUEDA DE NOTICIAS NUEVAS PARA ENVÍO PROGRAMADO ===");
     
     // Obtener configuración del usuario del sistema (usar el primer usuario activo como fallback)
     const { data: userConfigs } = await supabase
@@ -212,7 +212,7 @@ async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
       max_results: 50
     };
 
-    // CORREGIDO: Ejecutar el mismo script que usa la pantalla principal
+    // CORREGIDO: Ejecutar el mismo script que usa la pantalla principal para obtener noticias nuevas
     const pythonServerUrl = "http://host.docker.internal:8000"; // URL para acceder al servidor desde el contenedor
     
     const executeResponse = await fetch(`${pythonServerUrl}/api/scraper/execute`, {
@@ -240,10 +240,10 @@ async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
     const executeData = await executeResponse.json();
     console.log("Scraper ejecutado:", executeData);
 
-    // Esperar a que termine el proceso
+    // Esperar a que termine el proceso (sin límite de tiempo para envío programado)
     if (executeData.pid) {
       let attempts = 0;
-      const maxAttempts = 30; // 5 minutos máximo
+      const maxAttempts = 60; // 10 minutos máximo para envío programado
       
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 10000)); // 10 segundos
@@ -331,7 +331,7 @@ function parseCSVToNews(csvContent: string): any[] {
   }
 }
 
-// CORREGIDO: Formatear mensaje sin enlaces duplicados
+// CORREGIDO: Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
 function formatNewsForWhatsApp(news: any[]): string {
   let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -343,8 +343,7 @@ function formatNewsForWhatsApp(news: any[]): string {
       const summary = item.summary || item.description;
       message += `📝 ${summary.substring(0, 100)}...\n`;
     }
-    message += `📰 ${item.sourceName || item.source || 'Fuente desconocida'}\n`;
-    // CORREGIDO: Solo incluir el link de la noticia si existe y es válido
+    // CORREGIDO: Solo incluir el link específico de la noticia (sin el enlace del portal)
     if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
       message += `🔗 ${item.sourceUrl}\n`;
     }

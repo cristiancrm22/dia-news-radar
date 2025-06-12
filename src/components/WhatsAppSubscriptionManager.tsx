@@ -150,35 +150,6 @@ const WhatsAppSubscriptionManager = () => {
     }
   };
 
-  const processScheduledMessages = async () => {
-    setIsLoading(true);
-    try {
-      const result = await ScheduledWhatsAppService.processScheduledMessages();
-      if (result.success) {
-        const results = result.results as any;
-        toast({
-          title: "Procesamiento completado",
-          description: `Enviados: ${results?.sent || 0}, Saltados: ${results?.skipped || 0}, Errores: ${results?.errors?.length || 0}`
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Error al procesar mensajes",
-          variant: "destructive"
-        });
-      }
-    } catch (error: any) {
-      console.error("Error processing scheduled messages:", error);
-      toast({
-        title: "Error",
-        description: "Error al procesar los mensajes programados",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const sendImmediateNews = async () => {
     setIsSending(true);
     try {
@@ -308,17 +279,12 @@ const WhatsAppSubscriptionManager = () => {
                 <Send className="h-4 w-4 mr-2" />
                 {isSending ? "Enviando..." : "Enviar Ahora"}
               </Button>
-              <Button 
-                onClick={processScheduledMessages} 
-                disabled={isLoading} 
-                variant="outline"
-              >
-                {isLoading ? "Procesando..." : "Procesar Programados"}
-              </Button>
             </div>
           </CardTitle>
           <CardDescription>
-            Gestione las suscripciones de envío automático
+            Gestione las suscripciones de envío automático. 
+            El botón "Enviar Ahora" envía con las noticias actuales disponibles.
+            El envío programado automático ejecuta búsqueda de noticias nuevas en los horarios configurados.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -305,7 +305,7 @@ export class WhatsAppService {
     }
   }
   
-  // CORREGIDO: Formatear mensaje sin enlaces duplicados
+  // CORREGIDO: Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
   private static formatNewsForWhatsApp(news: any[]): string {
     let message = "📰 *RESUMEN DIARIO DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -316,8 +316,7 @@ export class WhatsAppService {
       if (item.summary) {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
-      message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
-      // CORREGIDO: Solo incluir el link de la noticia si existe y es válido
+      // CORREGIDO: Solo incluir el link específico de la noticia (sin el enlace del portal)
       if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
         message += `🔗 ${item.sourceUrl}\n`;
       }

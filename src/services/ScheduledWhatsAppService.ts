@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppService } from './WhatsAppService';
 
@@ -145,6 +146,7 @@ export class ScheduledWhatsAppService {
       if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
       if (updates.frequency !== undefined) updateData.frequency = updates.frequency;
       if (updates.weekdays !== undefined) updateData.weekdays = updates.weekdays;
+      if (updates.lastSent !== undefined) updateData.last_sent = updates.lastSent;
 
       console.log('Actualizando suscripción:', id, updateData);
 
@@ -195,34 +197,7 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  static async processScheduledMessages(): Promise<{ success: boolean; results?: any; error?: string }> {
-    try {
-      console.log('=== PROCESAMIENTO MANUAL DE MENSAJES PROGRAMADOS ===');
-      
-      // Llamar a la función de Supabase Edge para procesar mensajes programados
-      const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
-        body: { 
-          type: 'whatsapp', 
-          scheduled: true,
-          force: true // CORREGIDO: Forzar envío para testing manual
-        }
-      });
-
-      if (error) {
-        console.error('Error calling edge function:', error);
-        return { success: false, error: error.message };
-      }
-
-      console.log('Resultado del procesamiento:', data);
-      return { success: true, results: data };
-
-    } catch (error: any) {
-      console.error('Error in processScheduledMessages:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  // CORREGIDO: Método de envío inmediato mejorado
+  // CORREGIDO: Método de envío inmediato que busca noticias nuevas
   static async sendNewsToSubscribers(): Promise<{ success: boolean; results?: any; error?: string }> {
     try {
       console.log('=== ENVÍO INMEDIATO A SUSCRIPTORES ===');
@@ -252,8 +227,8 @@ export class ScheduledWhatsAppService {
 
       console.log(`Suscripciones activas encontradas: ${activeSubscriptions.length}`);
 
-      // Obtener noticias usando el mismo método que WhatsAppService
-      const todayNews = await this.getTodayNewsFromMainSystem();
+      // CORREGIDO: Para envío inmediato, obtener noticias usando el método normal (sin buscar nuevas)
+      const todayNews = await this.getTodayNewsForImmediate();
       console.log(`Noticias obtenidas: ${todayNews.length}`);
 
       // Formatear mensaje
@@ -312,10 +287,10 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  // NUEVO: Método para obtener noticias (igual que en WhatsAppService)
-  private static async getTodayNewsFromMainSystem(): Promise<any[]> {
+  // NUEVO: Método para obtener noticias para envío inmediato (sin buscar nuevas)
+  private static async getTodayNewsForImmediate(): Promise<any[]> {
     try {
-      console.log('Obteniendo noticias del sistema principal...');
+      console.log('Obteniendo noticias para envío inmediato...');
       
       // Primero intentar obtener noticias ya procesadas
       const response = await fetch("http://localhost:8000/api/news/today");
@@ -341,7 +316,7 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  // CORREGIDO: Formatear mensaje sin enlaces duplicados
+  // CORREGIDO: Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
   private static formatNewsForWhatsApp(news: any[]): string {
     let message = "📰 *RESUMEN DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -352,8 +327,7 @@ export class ScheduledWhatsAppService {
       if (item.summary) {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
-      message += `📰 ${item.sourceName || 'Fuente desconocida'}\n`;
-      // CORREGIDO: Solo incluir el link de la noticia si existe y es válido
+      // CORREGIDO: Solo incluir el link específico de la noticia (sin el enlace del portal)
       if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
         message += `🔗 ${item.sourceUrl}\n`;
       }
