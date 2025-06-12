@@ -27,7 +27,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    console.log("=== PROCESANDO ENVÍO PROGRAMADO ===");
+    console.log("=== PROCESANDO ENVÍO PROGRAMADO AUTOMÁTICO ===");
     
     const body = await req.json();
     const { type, scheduled, force }: ScheduledNewsRequest = body;
@@ -40,91 +40,96 @@ const handler = async (req: Request): Promise<Response> => {
       totalNews: 0
     };
 
-    // Si es envío programado o forzado, obtener suscripciones activas
-    if (scheduled || force) {
-      console.log("Procesando suscripciones programadas...");
-      
-      // Obtener suscripciones activas de WhatsApp
-      const { data: subscriptions, error: subError } = await supabase
-        .from('whatsapp_subscriptions')
-        .select('*')
-        .eq('is_active', true);
+    // Obtener suscripciones activas de WhatsApp
+    const { data: subscriptions, error: subError } = await supabase
+      .from('whatsapp_subscriptions')
+      .select('*')
+      .eq('is_active', true);
 
-      if (subError) {
-        console.error('Error obteniendo suscripciones:', subError);
-        return new Response(JSON.stringify({ 
-          success: false,
-          error: subError.message 
-        }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders }
-        });
-      }
+    if (subError) {
+      console.error('Error obteniendo suscripciones:', subError);
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: subError.message 
+      }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
 
-      if (!subscriptions || subscriptions.length === 0) {
-        console.log('No hay suscripciones activas');
-        return new Response(JSON.stringify({ 
-          success: true,
-          message: "No hay suscripciones activas",
-          results: { sent: 0, skipped: 0, errors: [], totalNews: 0 }
-        }), {
-          headers: { "Content-Type": "application/json", ...corsHeaders }
-        });
-      }
+    if (!subscriptions || subscriptions.length === 0) {
+      console.log('No hay suscripciones activas');
+      return new Response(JSON.stringify({ 
+        success: true,
+        message: "No hay suscripciones activas",
+        results: { sent: 0, skipped: 0, errors: [], totalNews: 0 }
+      }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
 
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5); // HH:MM
-      const currentDay = now.getDay(); // 0=domingo, 1=lunes, etc.
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+    const currentDay = now.getDay(); // 0=domingo, 1=lunes, etc.
 
-      console.log(`Hora actual: ${currentTime}, Día: ${currentDay}`);
-      console.log(`Suscripciones encontradas: ${subscriptions.length}`);
+    console.log(`Hora actual: ${currentTime}, Día: ${currentDay}`);
+    console.log(`Suscripciones encontradas: ${subscriptions.length}`);
 
-      // CORREGIDO: Para envío programado, ejecutar búsqueda de noticias nuevas
-      const todayNews = await getTodayNewsFromPrimarySystem();
-      console.log(`Noticias obtenidas: ${todayNews.length}`);
-      results.totalNews = todayNews.length;
-      
-      for (const subscription of subscriptions) {
-        try {
-          // CORREGIDO: Si es force (envío manual), enviar a todos
-          const shouldSend = force || shouldSendMessage(subscription, currentTime, currentDay);
-          
-          if (!shouldSend && !force) {
-            console.log(`Saltando suscripción ${subscription.id} - no es el momento (${subscription.scheduled_time} vs ${currentTime})`);
-            results.skipped++;
-            continue;
-          }
+    // Verificar si alguna suscripción debe ejecutarse ahora
+    const subscriptionsToProcess = subscriptions.filter(subscription => {
+      if (force) return true; // Si es forzado, procesar todas
+      return shouldSendMessage(subscription, currentTime, currentDay);
+    });
 
-          console.log(`Enviando a ${subscription.phone_number}...`);
+    if (subscriptionsToProcess.length === 0 && !force) {
+      console.log('No hay suscripciones que deban ejecutarse en este momento');
+      return new Response(JSON.stringify({ 
+        success: true,
+        message: "No hay suscripciones programadas para este momento",
+        results: { sent: 0, skipped: subscriptions.length, errors: [], totalNews: 0 }
+      }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
 
-          let newsMessage: string;
-          if (todayNews.length === 0) {
-            newsMessage = "📰 *RESUMEN PROGRAMADO*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
-          } else {
-            newsMessage = formatNewsForWhatsApp(todayNews);
-          }
+    console.log(`Suscripciones a procesar: ${subscriptionsToProcess.length}`);
 
-          // CORREGIDO: Enviar mensaje vía WhatsApp con mejor manejo de errores
-          const sent = await sendWhatsAppMessage(subscription.phone_number, newsMessage);
-          
-          if (sent) {
-            // Actualizar última fecha de envío
-            await supabase
-              .from('whatsapp_subscriptions')
-              .update({ last_sent: now.toISOString() })
-              .eq('id', subscription.id);
+    // EJECUTAR BÚSQUEDA DE NOTICIAS NUEVAS para envío programado
+    const todayNews = await executeNewsSearchForScheduled();
+    console.log(`Noticias obtenidas: ${todayNews.length}`);
+    results.totalNews = todayNews.length;
+    
+    for (const subscription of subscriptionsToProcess) {
+      try {
+        console.log(`Enviando a ${subscription.phone_number}...`);
 
-            results.whatsappSent++;
-            console.log(`✅ Mensaje enviado a ${subscription.phone_number}`);
-          } else {
-            results.errors.push(`${subscription.phone_number}: Error al enviar`);
-            console.error(`❌ Error enviando a ${subscription.phone_number}`);
-          }
-
-        } catch (error: any) {
-          results.errors.push(`${subscription.phone_number}: ${error.message}`);
-          console.error(`💥 Error procesando ${subscription.phone_number}:`, error);
+        let newsMessage: string;
+        if (todayNews.length === 0) {
+          newsMessage = "📰 *RESUMEN PROGRAMADO*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
+        } else {
+          newsMessage = formatNewsForWhatsApp(todayNews);
         }
+
+        // Enviar mensaje vía WhatsApp
+        const sent = await sendWhatsAppMessage(subscription.phone_number, newsMessage);
+        
+        if (sent) {
+          // Actualizar última fecha de envío
+          await supabase
+            .from('whatsapp_subscriptions')
+            .update({ last_sent: now.toISOString() })
+            .eq('id', subscription.id);
+
+          results.whatsappSent++;
+          console.log(`✅ Mensaje enviado a ${subscription.phone_number}`);
+        } else {
+          results.errors.push(`${subscription.phone_number}: Error al enviar`);
+          console.error(`❌ Error enviando a ${subscription.phone_number}`);
+        }
+
+      } catch (error: any) {
+        results.errors.push(`${subscription.phone_number}: ${error.message}`);
+        console.error(`💥 Error procesando ${subscription.phone_number}:`, error);
       }
     }
 
@@ -133,7 +138,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({ 
       success: true,
       results,
-      message: `Enviado: ${results.whatsappSent} WhatsApp, ${results.emailsSent} emails. Noticias: ${results.totalNews}`
+      message: `Enviado: ${results.whatsappSent} WhatsApp. Noticias: ${results.totalNews}`
     }), {
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
@@ -178,12 +183,12 @@ function shouldSendMessage(subscription: any, currentTime: string, currentDay: n
   return false;
 }
 
-// CORREGIDO: Nueva función que ejecuta búsqueda de noticias nuevas para envío programado
-async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
+// NUEVA FUNCIÓN: Ejecutar búsqueda de noticias para envío programado
+async function executeNewsSearchForScheduled(): Promise<any[]> {
   try {
     console.log("=== EJECUTANDO BÚSQUEDA DE NOTICIAS NUEVAS PARA ENVÍO PROGRAMADO ===");
     
-    // Obtener configuración del usuario del sistema (usar el primer usuario activo como fallback)
+    // Obtener configuración del primer usuario activo como fallback
     const { data: userConfigs } = await supabase
       .from('user_search_settings')
       .select('*')
@@ -212,9 +217,15 @@ async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
       max_results: 50
     };
 
-    // CORREGIDO: Ejecutar el mismo script que usa la pantalla principal para obtener noticias nuevas
-    const pythonServerUrl = "http://host.docker.internal:8000"; // URL para acceder al servidor desde el contenedor
+    // URL para acceder al servidor Python desde el contenedor Edge Function
+    const pythonServerUrl = "http://host.docker.internal:8000";
     
+    console.log("Ejecutando scraper con configuración:", {
+      keywords: keywords.length,
+      sources: sources.length,
+      config
+    });
+
     const executeResponse = await fetch(`${pythonServerUrl}/api/scraper/execute`, {
       method: "POST",
       headers: {
@@ -243,7 +254,7 @@ async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
     // Esperar a que termine el proceso (sin límite de tiempo para envío programado)
     if (executeData.pid) {
       let attempts = 0;
-      const maxAttempts = 60; // 10 minutos máximo para envío programado
+      const maxAttempts = 120; // 20 minutos máximo para envío programado
       
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 10000)); // 10 segundos
@@ -252,7 +263,7 @@ async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
           const statusResponse = await fetch(`${pythonServerUrl}/api/scraper/status?pid=${executeData.pid}`);
           if (statusResponse.ok) {
             const statusData = await statusResponse.json();
-            console.log(`Estado del scraper: ${statusData.status}`);
+            console.log(`Estado del scraper: ${statusData.status} (${attempts + 1}/${maxAttempts})`);
             
             if (statusData.status === 'completed') {
               // Obtener el CSV generado
@@ -280,8 +291,8 @@ async function getTodayNewsFromPrimarySystem(): Promise<any[]> {
     console.log("No se pudieron obtener noticias del sistema principal");
     return [];
     
-  } catch (error) {
-    console.error("Error obteniendo noticias del sistema principal:", error);
+  } catch (error: any) {
+    console.error("Error ejecutando búsqueda de noticias:", error);
     return [];
   }
 }
@@ -331,7 +342,7 @@ function parseCSVToNews(csvContent: string): any[] {
   }
 }
 
-// CORREGIDO: Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
+// Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
 function formatNewsForWhatsApp(news: any[]): string {
   let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -343,7 +354,7 @@ function formatNewsForWhatsApp(news: any[]): string {
       const summary = item.summary || item.description;
       message += `📝 ${summary.substring(0, 100)}...\n`;
     }
-    // CORREGIDO: Solo incluir el link específico de la noticia (sin el enlace del portal)
+    // Solo incluir el link específico de la noticia
     if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
       message += `🔗 ${item.sourceUrl}\n`;
     }
@@ -356,7 +367,7 @@ function formatNewsForWhatsApp(news: any[]): string {
   return message;
 }
 
-// CORREGIDO: Función de envío de WhatsApp mejorada
+// Función de envío de WhatsApp mejorada
 async function sendWhatsAppMessage(phoneNumber: string, message: string): Promise<boolean> {
   try {
     const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
@@ -396,7 +407,7 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
     
     console.log(`Enviando WhatsApp a ${cleanNumber} vía ${evolutionApiUrl}`);
     
-    // CORREGIDO: Intentar múltiples endpoints como en WhatsAppService
+    // Intentar múltiples endpoints
     const apiUrls = [
       `${evolutionApiUrl}/message/sendText/${instanceName}`,
       `${evolutionApiUrl}/message/send-text/${instanceName}`,
