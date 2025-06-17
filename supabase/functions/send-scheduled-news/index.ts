@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.10';
 
@@ -27,9 +28,11 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     console.log("=== PROCESANDO ENVÍO PROGRAMADO AUTOMÁTICO ===");
+    console.log("Timestamp actual:", new Date().toISOString());
     
     const body = await req.json();
     const { type, scheduled, force }: ScheduledNewsRequest = body;
+    console.log("Parámetros recibidos:", { type, scheduled, force });
     
     let results = {
       whatsappSent: 0,
@@ -57,7 +60,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     if (!subscriptions || subscriptions.length === 0) {
-      console.log('No hay suscripciones activas');
+      console.log('❌ No hay suscripciones activas');
       return new Response(JSON.stringify({ 
         success: true,
         message: "No hay suscripciones activas",
@@ -68,43 +71,60 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
-    const currentDay = now.getDay(); // 0=domingo, 1=lunes, etc.
+    // Ajustar a la zona horaria de Argentina (UTC-3)
+    const argentinaTime = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+    const currentTime = argentinaTime.toTimeString().slice(0, 5); // HH:MM
+    const currentDay = argentinaTime.getDay(); // 0=domingo, 1=lunes, etc.
 
-    console.log(`Hora actual: ${currentTime}, Día: ${currentDay}`);
-    console.log(`Suscripciones encontradas: ${subscriptions.length}`);
+    console.log(`⏰ Hora actual (Argentina): ${currentTime}, Día: ${currentDay}`);
+    console.log(`📱 Suscripciones encontradas: ${subscriptions.length}`);
+
+    // Log detallado de cada suscripción
+    subscriptions.forEach((sub, index) => {
+      console.log(`📋 Suscripción ${index + 1}:`);
+      console.log(`  - Teléfono: ${sub.phone_number}`);
+      console.log(`  - Hora programada: ${sub.scheduled_time}`);
+      console.log(`  - Frecuencia: ${sub.frequency}`);
+      console.log(`  - Activa: ${sub.is_active}`);
+      console.log(`  - Días (semanal): ${sub.weekdays}`);
+      console.log(`  - Último envío: ${sub.last_sent || 'Nunca'}`);
+    });
 
     // Verificar si alguna suscripción debe ejecutarse ahora
     const subscriptionsToProcess = subscriptions.filter(subscription => {
-      if (force) return true; // Si es forzado, procesar todas
-      return shouldSendMessage(subscription, currentTime, currentDay);
+      if (force) {
+        console.log(`🔄 MODO FORZADO: Procesando ${subscription.phone_number}`);
+        return true;
+      }
+      
+      const shouldSend = shouldSendMessage(subscription, currentTime, currentDay);
+      console.log(`🔍 ${subscription.phone_number}: ${shouldSend ? '✅ DEBE ENVIARSE' : '❌ NO DEBE ENVIARSE'}`);
+      return shouldSend;
     });
 
+    console.log(`📊 RESULTADO: ${subscriptionsToProcess.length} de ${subscriptions.length} suscripciones deben procesarse`);
+
     if (subscriptionsToProcess.length === 0 && !force) {
-      console.log('No hay suscripciones que deban ejecutarse en este momento');
-      console.log('Detalle de suscripciones:');
-      subscriptions.forEach(sub => {
-        console.log(`- ${sub.phone_number}: programada ${sub.scheduled_time}, frecuencia ${sub.frequency}`);
-      });
+      console.log('⏭️ No hay suscripciones que deban ejecutarse en este momento');
       return new Response(JSON.stringify({ 
         success: true,
-        message: "No hay suscripciones programadas para este momento",
+        message: `No hay suscripciones programadas para este momento (${currentTime})`,
         results: { sent: 0, skipped: subscriptions.length, errors: [], totalNews: 0 }
       }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
 
-    console.log(`Suscripciones a procesar: ${subscriptionsToProcess.length}`);
+    console.log(`🚀 Iniciando procesamiento de ${subscriptionsToProcess.length} suscripciones`);
 
     // EJECUTAR BÚSQUEDA DE NOTICIAS NUEVAS para envío programado
     const todayNews = await executeNewsSearchForScheduled();
-    console.log(`Noticias obtenidas: ${todayNews.length}`);
+    console.log(`📰 Noticias obtenidas: ${todayNews.length}`);
     results.totalNews = todayNews.length;
     
     for (const subscription of subscriptionsToProcess) {
       try {
-        console.log(`Enviando a ${subscription.phone_number}...`);
+        console.log(`📤 Enviando a ${subscription.phone_number}...`);
 
         let newsMessage: string;
         if (todayNews.length === 0) {
@@ -124,7 +144,7 @@ const handler = async (req: Request): Promise<Response> => {
             .eq('id', subscription.id);
 
           results.whatsappSent++;
-          console.log(`✅ Mensaje enviado a ${subscription.phone_number}`);
+          console.log(`✅ Mensaje enviado exitosamente a ${subscription.phone_number}`);
         } else {
           results.errors.push(`${subscription.phone_number}: Error al enviar`);
           console.error(`❌ Error enviando a ${subscription.phone_number}`);
@@ -136,18 +156,18 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`=== RESUMEN: ${results.whatsappSent} enviados, ${results.skipped} saltados, ${results.errors.length} errores ===`);
+    console.log(`🏁 RESUMEN FINAL: ${results.whatsappSent} enviados, ${results.errors.length} errores, ${results.totalNews} noticias`);
     
     return new Response(JSON.stringify({ 
       success: true,
       results,
-      message: `Enviado: ${results.whatsappSent} WhatsApp. Noticias: ${results.totalNews}`
+      message: `Procesado: ${results.whatsappSent} enviados de ${subscriptionsToProcess.length} programados. Noticias: ${results.totalNews}`
     }), {
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
     
   } catch (error: any) {
-    console.error("Error en envío programado:", error);
+    console.error("💥 Error general en envío programado:", error);
     return new Response(JSON.stringify({ 
       error: error.message,
       success: false 
@@ -159,26 +179,33 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 function shouldSendMessage(subscription: any, currentTime: string, currentDay: number): boolean {
-  // Extraer hora y minuto para comparación con tolerancia más amplia
+  console.log(`🔍 Evaluando suscripción ${subscription.phone_number}:`);
+  
+  // Extraer hora y minuto para comparación
   const [currentHour, currentMinute] = currentTime.split(':').map(Number);
-  const [schedHour, schedMinute] = subscription.scheduled_time.split(':').map(Number);
+  const scheduledTimeStr = subscription.scheduled_time.substring(0, 5); // Solo HH:MM, sin segundos
+  const [schedHour, schedMinute] = scheduledTimeStr.split(':').map(Number);
   
   // Calcular diferencia en minutos total
   const currentTotalMinutes = currentHour * 60 + currentMinute;
   const schedTotalMinutes = schedHour * 60 + schedMinute;
   const timeDiff = Math.abs(currentTotalMinutes - schedTotalMinutes);
   
-  console.log(`Comparando horarios: actual ${currentTime} vs programado ${subscription.scheduled_time} (diff: ${timeDiff} min)`);
+  console.log(`  ⏰ Hora actual: ${currentTime} (${currentTotalMinutes} min)`);
+  console.log(`  ⏰ Hora programada: ${scheduledTimeStr} (${schedTotalMinutes} min)`);
+  console.log(`  📏 Diferencia: ${timeDiff} minutos`);
   
-  // Tolerancia de 5 minutos para mayor flexibilidad
-  if (timeDiff > 5) {
-    console.log(`Fuera de horario - diferencia ${timeDiff} minutos`);
+  // Tolerancia de 10 minutos para mayor flexibilidad
+  if (timeDiff > 10) {
+    console.log(`  ❌ Fuera de horario - diferencia ${timeDiff} minutos (tolerancia: 10 min)`);
     return false;
   }
 
+  console.log(`  ✅ Dentro del horario - diferencia ${timeDiff} minutos`);
+
   // Para frecuencia diaria, enviar todos los días
   if (subscription.frequency === 'daily') {
-    console.log(`Suscripción diaria - debe enviar`);
+    console.log(`  📅 Suscripción diaria - DEBE ENVIAR`);
     return true;
   }
 
@@ -186,10 +213,11 @@ function shouldSendMessage(subscription: any, currentTime: string, currentDay: n
   if (subscription.frequency === 'weekly') {
     const weekdays = subscription.weekdays || [];
     const shouldSend = weekdays.includes(currentDay);
-    console.log(`Suscripción semanal - día ${currentDay}, días programados: ${weekdays}, debe enviar: ${shouldSend}`);
+    console.log(`  📅 Suscripción semanal - día ${currentDay}, días programados: ${weekdays}, resultado: ${shouldSend ? 'DEBE ENVIAR' : 'NO DEBE ENVIAR'}`);
     return shouldSend;
   }
 
+  console.log(`  ❓ Frecuencia desconocida: ${subscription.frequency}`);
   return false;
 }
 
