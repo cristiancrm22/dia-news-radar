@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.10';
 
@@ -83,6 +82,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (subscriptionsToProcess.length === 0 && !force) {
       console.log('No hay suscripciones que deban ejecutarse en este momento');
+      console.log('Detalle de suscripciones:');
+      subscriptions.forEach(sub => {
+        console.log(`- ${sub.phone_number}: programada ${sub.scheduled_time}, frecuencia ${sub.frequency}`);
+      });
       return new Response(JSON.stringify({ 
         success: true,
         message: "No hay suscripciones programadas para este momento",
@@ -156,28 +159,35 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 function shouldSendMessage(subscription: any, currentTime: string, currentDay: number): boolean {
-  // Extraer hora y minuto para comparación con tolerancia
+  // Extraer hora y minuto para comparación con tolerancia más amplia
   const [currentHour, currentMinute] = currentTime.split(':').map(Number);
   const [schedHour, schedMinute] = subscription.scheduled_time.split(':').map(Number);
   
-  // Tolerancia de 2 minutos
+  // Calcular diferencia en minutos total
   const currentTotalMinutes = currentHour * 60 + currentMinute;
   const schedTotalMinutes = schedHour * 60 + schedMinute;
   const timeDiff = Math.abs(currentTotalMinutes - schedTotalMinutes);
   
-  if (timeDiff > 2) {
+  console.log(`Comparando horarios: actual ${currentTime} vs programado ${subscription.scheduled_time} (diff: ${timeDiff} min)`);
+  
+  // Tolerancia de 5 minutos para mayor flexibilidad
+  if (timeDiff > 5) {
+    console.log(`Fuera de horario - diferencia ${timeDiff} minutos`);
     return false;
   }
 
   // Para frecuencia diaria, enviar todos los días
   if (subscription.frequency === 'daily') {
+    console.log(`Suscripción diaria - debe enviar`);
     return true;
   }
 
   // Para frecuencia semanal, verificar días de la semana
   if (subscription.frequency === 'weekly') {
     const weekdays = subscription.weekdays || [];
-    return weekdays.includes(currentDay);
+    const shouldSend = weekdays.includes(currentDay);
+    console.log(`Suscripción semanal - día ${currentDay}, días programados: ${weekdays}, debe enviar: ${shouldSend}`);
+    return shouldSend;
   }
 
   return false;
