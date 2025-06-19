@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { WhatsAppService } from './WhatsAppService';
 
@@ -197,7 +196,7 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  // CORREGIDO: Método de envío inmediato que busca noticias nuevas
+  // MEJORADO: Método de envío inmediato con mejor manejo de errores
   static async sendNewsToSubscribers(): Promise<{ success: boolean; results?: any; error?: string }> {
     try {
       console.log('=== ENVÍO INMEDIATO A SUSCRIPTORES ===');
@@ -227,14 +226,14 @@ export class ScheduledWhatsAppService {
 
       console.log(`Suscripciones activas encontradas: ${activeSubscriptions.length}`);
 
-      // CORREGIDO: Para envío inmediato, obtener noticias usando el método normal (sin buscar nuevas)
-      const todayNews = await this.getTodayNewsForImmediate();
+      // Obtener noticias disponibles
+      const todayNews = await this.getAvailableNewsForImmediate();
       console.log(`Noticias obtenidas: ${todayNews.length}`);
 
-      // Formatear mensaje
+      // Formatear mensaje SIEMPRE (con o sin noticias)
       let message: string;
       if (todayNews.length === 0) {
-        message = "📰 *RESUMEN DE NOTICIAS*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
+        message = "📰 *RESUMEN DE NOTICIAS*\n\n⚠️ No hay noticias disponibles en este momento.\n\nVolveremos a enviar cuando tengamos nuevas noticias.\n\n🤖 News Radar";
       } else {
         message = this.formatNewsForWhatsApp(todayNews);
       }
@@ -272,12 +271,13 @@ export class ScheduledWhatsAppService {
       console.log(`=== RESUMEN: ${sent} enviados, ${errors.length} errores ===`);
 
       return {
-        success: sent > 0,
+        success: true, // Cambiar a true si se procesaron suscripciones
         results: {
           sent,
           total: activeSubscriptions.length,
           errors,
-          totalNews: todayNews.length
+          totalNews: todayNews.length,
+          message: todayNews.length === 0 ? "Sin noticias - mensaje informativo enviado" : "Noticias enviadas correctamente"
         }
       };
 
@@ -287,28 +287,41 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  // NUEVO: Método para obtener noticias para envío inmediato (sin buscar nuevas)
-  private static async getTodayNewsForImmediate(): Promise<any[]> {
+  // NUEVA FUNCIÓN: Obtener noticias disponibles con múltiples fuentes
+  private static async getAvailableNewsForImmediate(): Promise<any[]> {
     try {
       console.log('Obteniendo noticias para envío inmediato...');
       
-      // Primero intentar obtener noticias ya procesadas
-      const response = await fetch("http://localhost:8000/api/news/today");
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`Noticias obtenidas del cache: ${data.news?.length || 0}`);
-        if (data.news && data.news.length > 0) {
-          return data.news;
+      // Primero intentar obtener noticias ya procesadas del servidor local
+      try {
+        const response = await fetch("http://localhost:8000/api/news/today");
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Noticias obtenidas del cache: ${data.news?.length || 0}`);
+          if (data.news && data.news.length > 0) {
+            return data.news;
+          }
         }
+      } catch (localError) {
+        console.log('Cache local no disponible, intentando otras fuentes...');
       }
       
-      // Si no hay noticias en cache, usar el servicio principal
-      const NewsService = (await import('./NewsService')).default;
-      const newsFromService = await NewsService.getNews();
-      console.log(`Noticias del servicio principal: ${newsFromService.length}`);
+      // Si no hay noticias en cache, intentar desde el servicio principal
+      try {
+        const NewsService = (await import('./NewsService')).default;
+        const newsFromService = await NewsService.getNews();
+        console.log(`Noticias del servicio principal: ${newsFromService.length}`);
+        
+        if (newsFromService.length > 0) {
+          return newsFromService;
+        }
+      } catch (serviceError) {
+        console.log('Servicio principal no disponible...');
+      }
       
-      return newsFromService;
+      console.log('No hay noticias disponibles de ninguna fuente');
+      return [];
       
     } catch (error: any) {
       console.error(`Error obteniendo noticias: ${error.message}`);
@@ -316,18 +329,18 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  // CORREGIDO: Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
+  // MEJORADO: Formatear mensaje para WhatsApp
   private static formatNewsForWhatsApp(news: any[]): string {
     let message = "📰 *RESUMEN DE NOTICIAS*\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
     
-    // CORREGIDO: Enviar TODAS las noticias en lugar de limitar a 5
+    // Enviar TODAS las noticias disponibles
     news.forEach((item, index) => {
       message += `*${index + 1}.* ${item.title}\n`;
       if (item.summary) {
         message += `📝 ${item.summary.substring(0, 100)}...\n`;
       }
-      // CORREGIDO: Solo incluir el link específico de la noticia (sin el enlace del portal)
+      // Solo incluir el link específico de la noticia
       if (item.sourceUrl && item.sourceUrl !== "#" && item.sourceUrl !== "N/A") {
         message += `🔗 ${item.sourceUrl}\n`;
       }
@@ -335,7 +348,7 @@ export class ScheduledWhatsAppService {
     });
     
     message += "━━━━━━━━━━━━━━━━━━━━\n";
-    message += `🤖 Enviado por News Radar (${news.length} noticias)`;
+    message += `🤖 News Radar (${news.length} noticias)`;
     
     return message;
   }

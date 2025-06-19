@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +11,7 @@ import SourcesConfig from "@/components/SourcesConfig";
 import WhatsAppConfig from "@/components/WhatsAppConfig";
 import EmailConfig from "@/components/EmailConfig";
 import KeywordsConfig from "@/components/KeywordsConfig";
+import SystemClock from "@/components/SystemClock";
 import NewsService from "@/services/NewsService";
 import { NewsItem, PythonScriptExecutionStatus } from "@/types/news";
 import { format } from "date-fns";
@@ -240,6 +242,7 @@ const Index = () => {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            <SystemClock />
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <User className="h-4 w-4" />
               <span>{user?.email}</span>

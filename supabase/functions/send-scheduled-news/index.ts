@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.10';
 
@@ -70,13 +69,14 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
+    // CORREGIDO: Usar la hora local de Argentina correctamente
     const now = new Date();
-    // Ajustar a la zona horaria de Argentina (UTC-3)
-    const argentinaTime = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+    const argentinaTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
     const currentTime = argentinaTime.toTimeString().slice(0, 5); // HH:MM
     const currentDay = argentinaTime.getDay(); // 0=domingo, 1=lunes, etc.
 
-    console.log(`⏰ Hora actual (Argentina): ${currentTime}, Día: ${currentDay}`);
+    console.log(`⏰ Hora UTC: ${now.toTimeString().slice(0, 5)}`);
+    console.log(`⏰ Hora Argentina: ${currentTime}, Día: ${currentDay}`);
     console.log(`📱 Suscripciones encontradas: ${subscriptions.length}`);
 
     // Log detallado de cada suscripción
@@ -97,7 +97,7 @@ const handler = async (req: Request): Promise<Response> => {
         return true;
       }
       
-      const shouldSend = shouldSendMessage(subscription, currentTime, currentDay);
+      const shouldSend = shouldSendMessage(subscription, currentTime, currentDay, argentinaTime);
       console.log(`🔍 ${subscription.phone_number}: ${shouldSend ? '✅ DEBE ENVIARSE' : '❌ NO DEBE ENVIARSE'}`);
       return shouldSend;
     });
@@ -117,10 +117,14 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`🚀 Iniciando procesamiento de ${subscriptionsToProcess.length} suscripciones`);
 
-    // EJECUTAR BÚSQUEDA DE NOTICIAS NUEVAS para envío programado
-    const todayNews = await executeNewsSearchForScheduled();
+    // OBTENER NOTICIAS (con fallback a mensaje sin noticias)
+    const todayNews = await getAvailableNews();
     console.log(`📰 Noticias obtenidas: ${todayNews.length}`);
     results.totalNews = todayNews.length;
+    
+    // OBTENER CONFIGURACIÓN DE WHATSAPP del primer usuario activo
+    const whatsappConfig = await getWhatsAppConfig();
+    console.log("📋 Configuración WhatsApp:", whatsappConfig);
     
     for (const subscription of subscriptionsToProcess) {
       try {
@@ -128,19 +132,23 @@ const handler = async (req: Request): Promise<Response> => {
 
         let newsMessage: string;
         if (todayNews.length === 0) {
-          newsMessage = "📰 *RESUMEN PROGRAMADO*\n\n⚠️ No hay noticias disponibles en este momento.\n\n🤖 News Radar";
+          newsMessage = "📰 *RESUMEN PROGRAMADO*\n\n⚠️ No hay noticias disponibles en este momento.\n\nVolveremos a enviar cuando tengamos nuevas noticias.\n\n🤖 News Radar";
         } else {
           newsMessage = formatNewsForWhatsApp(todayNews);
         }
 
         // Enviar mensaje vía WhatsApp
-        const sent = await sendWhatsAppMessage(subscription.phone_number, newsMessage);
+        const sent = await sendWhatsAppMessage(
+          whatsappConfig, 
+          subscription.phone_number, 
+          newsMessage
+        );
         
         if (sent) {
-          // Actualizar última fecha de envío
+          // Actualizar última fecha de envío con la hora de Argentina
           await supabase
             .from('whatsapp_subscriptions')
-            .update({ last_sent: now.toISOString() })
+            .update({ last_sent: argentinaTime.toISOString() })
             .eq('id', subscription.id);
 
           results.whatsappSent++;
@@ -178,32 +186,50 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-function shouldSendMessage(subscription: any, currentTime: string, currentDay: number): boolean {
+// FUNCIÓN CORREGIDA: Evaluación mejorada del horario programado
+function shouldSendMessage(subscription: any, currentTime: string, currentDay: number, currentDateTime: Date): boolean {
   console.log(`🔍 Evaluando suscripción ${subscription.phone_number}:`);
   
   // Extraer hora y minuto para comparación
   const [currentHour, currentMinute] = currentTime.split(':').map(Number);
-  const scheduledTimeStr = subscription.scheduled_time.substring(0, 5); // Solo HH:MM, sin segundos
+  const scheduledTimeStr = subscription.scheduled_time.substring(0, 5); // Solo HH:MM
   const [schedHour, schedMinute] = scheduledTimeStr.split(':').map(Number);
   
-  // Calcular diferencia en minutos total
-  const currentTotalMinutes = currentHour * 60 + currentMinute;
-  const schedTotalMinutes = schedHour * 60 + schedMinute;
-  const timeDiff = Math.abs(currentTotalMinutes - schedTotalMinutes);
+  console.log(`  ⏰ Hora actual: ${currentTime} (${currentHour}:${currentMinute})`);
+  console.log(`  ⏰ Hora programada: ${scheduledTimeStr} (${schedHour}:${schedMinute})`);
   
-  console.log(`  ⏰ Hora actual: ${currentTime} (${currentTotalMinutes} min)`);
-  console.log(`  ⏰ Hora programada: ${scheduledTimeStr} (${schedTotalMinutes} min)`);
-  console.log(`  📏 Diferencia: ${timeDiff} minutos`);
+  // CORREGIDO: Verificar si es exactamente la hora programada
+  const isExactTime = currentHour === schedHour && currentMinute === schedMinute;
   
-  // Tolerancia de 10 minutos para mayor flexibilidad
-  if (timeDiff > 10) {
-    console.log(`  ❌ Fuera de horario - diferencia ${timeDiff} minutos (tolerancia: 10 min)`);
+  if (!isExactTime) {
+    console.log(`  ❌ No es la hora exacta - actual: ${currentHour}:${currentMinute}, programada: ${schedHour}:${schedMinute}`);
     return false;
   }
 
-  console.log(`  ✅ Dentro del horario - diferencia ${timeDiff} minutos`);
+  console.log(`  ✅ Es la hora exacta de envío`);
 
-  // Para frecuencia diaria, enviar todos los días
+  // Verificar si ya se envió HOY para evitar envíos duplicados
+  if (subscription.last_sent) {
+    const lastSentDate = new Date(subscription.last_sent);
+    const currentDate = currentDateTime;
+    
+    // Verificar si el último envío fue HOY
+    const lastSentDay = lastSentDate.toDateString();
+    const currentDay_str = currentDate.toDateString();
+    
+    console.log(`  📅 Último envío: ${lastSentDate.toLocaleString()}`);
+    console.log(`  📅 Día actual: ${currentDay_str}`);
+    console.log(`  📅 Día último envío: ${lastSentDay}`);
+    
+    if (lastSentDay === currentDay_str) {
+      console.log(`  ❌ Ya se envió HOY - no enviar de nuevo`);
+      return false;
+    }
+  }
+
+  console.log(`  ✅ No se envió hoy - proceder con envío`);
+
+  // Para frecuencia diaria, enviar todos los días (si la hora coincide)
   if (subscription.frequency === 'daily') {
     console.log(`  📅 Suscripción diaria - DEBE ENVIAR`);
     return true;
@@ -221,166 +247,96 @@ function shouldSendMessage(subscription: any, currentTime: string, currentDay: n
   return false;
 }
 
-// NUEVA FUNCIÓN: Ejecutar búsqueda de noticias para envío programado
-async function executeNewsSearchForScheduled(): Promise<any[]> {
+// NUEVA FUNCIÓN: Obtener noticias disponibles con múltiples fuentes
+async function getAvailableNews(): Promise<any[]> {
   try {
-    console.log("=== EJECUTANDO BÚSQUEDA DE NOTICIAS NUEVAS PARA ENVÍO PROGRAMADO ===");
+    console.log("=== OBTENIENDO NOTICIAS DISPONIBLES ===");
     
-    // Obtener configuración del primer usuario activo como fallback
-    const { data: userConfigs } = await supabase
-      .from('user_search_settings')
-      .select('*')
-      .limit(1);
-    
-    const { data: keywords } = await supabase
-      .from('user_keywords')
-      .select('keyword')
-      .limit(10);
+    // Intentar primero obtener desde el cache/API local
+    try {
+      const response = await fetch("http://localhost:8000/api/news/today", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" }
+      });
       
-    const { data: sources } = await supabase
-      .from('user_news_sources')
-      .select('url')
-      .eq('enabled', true)
-      .limit(15);
-
-    if (!keywords || !sources || keywords.length === 0 || sources.length === 0) {
-      console.log("No hay configuración de keywords o fuentes");
-      return [];
-    }
-
-    const config = userConfigs?.[0] || {
-      validate_links: true,
-      current_date_only: true,
-      deep_scrape: true,
-      max_results: 50
-    };
-
-    // URL para acceder al servidor Python desde el contenedor Edge Function
-    const pythonServerUrl = "http://host.docker.internal:8000";
-    
-    console.log("Ejecutando scraper con configuración:", {
-      keywords: keywords.length,
-      sources: sources.length,
-      config
-    });
-
-    const executeResponse = await fetch(`${pythonServerUrl}/api/scraper/execute`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        keywords: keywords.map(k => k.keyword),
-        sources: sources.map(s => s.url),
-        twitterUsers: [],
-        validateLinks: config.validate_links,
-        todayOnly: config.current_date_only,
-        maxResults: config.max_results,
-        deepScrape: config.deep_scrape,
-        outputPath: `/tmp/scheduled_news_${Date.now()}.csv`
-      })
-    });
-
-    if (!executeResponse.ok) {
-      console.error(`Error ejecutando scraper: ${executeResponse.status}`);
-      return [];
-    }
-
-    const executeData = await executeResponse.json();
-    console.log("Scraper ejecutado:", executeData);
-
-    // Esperar a que termine el proceso (sin límite de tiempo para envío programado)
-    if (executeData.pid) {
-      let attempts = 0;
-      const maxAttempts = 120; // 20 minutos máximo para envío programado
-      
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 segundos
-        
-        try {
-          const statusResponse = await fetch(`${pythonServerUrl}/api/scraper/status?pid=${executeData.pid}`);
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            console.log(`Estado del scraper: ${statusData.status} (${attempts + 1}/${maxAttempts})`);
-            
-            if (statusData.status === 'completed') {
-              // Obtener el CSV generado
-              if (statusData.csvPath) {
-                const csvResponse = await fetch(`${pythonServerUrl}/api/scraper/csv?path=${encodeURIComponent(statusData.csvPath)}`);
-                if (csvResponse.ok) {
-                  const csvContent = await csvResponse.text();
-                  return parseCSVToNews(csvContent);
-                }
-              }
-              break;
-            } else if (statusData.status === 'error') {
-              console.error("Error en el scraper:", statusData.error);
-              break;
-            }
-          }
-        } catch (error) {
-          console.error("Error verificando estado:", error);
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`📰 Noticias del cache local: ${data.news?.length || 0}`);
+        if (data.news && data.news.length > 0) {
+          return data.news;
         }
-        
-        attempts++;
       }
+    } catch (localError) {
+      console.log("ℹ️ Cache local no disponible, continuando...");
     }
 
-    console.log("No se pudieron obtener noticias del sistema principal");
+    // Si no hay noticias locales, intentar obtener desde Supabase
+    try {
+      const { data: radarLogs } = await supabase
+        .from('radar_logs')
+        .select('results')
+        .eq('status', 'completed')
+        .not('results', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (radarLogs && radarLogs.length > 0 && radarLogs[0].results) {
+        const results = radarLogs[0].results as any;
+        if (results.news && Array.isArray(results.news) && results.news.length > 0) {
+          console.log(`📰 Noticias desde Supabase: ${results.news.length}`);
+          return results.news;
+        }
+      }
+    } catch (supabaseError) {
+      console.log("ℹ️ No hay noticias en Supabase, continuando...");
+    }
+
+    console.log("📰 No hay noticias disponibles - se enviará mensaje informativo");
     return [];
     
   } catch (error: any) {
-    console.error("Error ejecutando búsqueda de noticias:", error);
+    console.error("Error obteniendo noticias:", error);
     return [];
   }
 }
 
-function parseCSVToNews(csvContent: string): any[] {
+// NUEVA FUNCIÓN: Obtener configuración de WhatsApp
+async function getWhatsAppConfig(): Promise<any> {
   try {
-    const lines = csvContent.split('\n').filter(line => line.trim());
-    if (lines.length <= 1) return [];
-    
-    const news = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = [];
-      let current = '';
-      let inQuotes = false;
-      
-      for (let j = 0; j < lines[i].length; j++) {
-        const char = lines[i][j];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          values.push(current.trim().replace(/^"(.*)"$/, '$1'));
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      values.push(current.trim().replace(/^"(.*)"$/, '$1'));
-      
-      if (values.length >= 4) {
-        news.push({
-          title: values[0] || 'Sin título',
-          summary: values[3] || 'Sin resumen',
-          date: values[1] || new Date().toISOString(),
-          sourceUrl: values[2] || '#',
-          sourceName: values[4] || 'Fuente desconocida',
-          relevanceScore: values[5] || '1'
-        });
-      }
+    // Obtener configuración de WhatsApp del primer usuario activo
+    const { data: configs } = await supabase
+      .from('user_whatsapp_configs')
+      .select('*')
+      .eq('is_active', true)
+      .limit(1);
+
+    if (configs && configs.length > 0) {
+      const config = configs[0];
+      return {
+        evolutionApiUrl: config.evolution_api_url || "",
+        apiKey: config.api_key || "",
+        connectionMethod: config.connection_method || "evolution"
+      };
     }
+
+    // Si no hay configuración de usuario, usar variables de entorno como fallback
+    return {
+      evolutionApiUrl: Deno.env.get("EVOLUTION_API_URL") || "",
+      apiKey: Deno.env.get("WHATSAPP_API_KEY") || "",
+      connectionMethod: "evolution"
+    };
     
-    console.log(`Noticias parseadas del CSV: ${news.length}`);
-    return news;
   } catch (error) {
-    console.error("Error parseando CSV:", error);
-    return [];
+    console.error("Error obteniendo configuración WhatsApp:", error);
+    return {
+      evolutionApiUrl: "",
+      apiKey: "",
+      connectionMethod: "evolution"
+    };
   }
 }
 
-// Formatear mensaje SIN el enlace del portal, solo el enlace específico de la noticia
+// Formatear mensaje para WhatsApp
 function formatNewsForWhatsApp(news: any[]): string {
   let message = "📰 *RESUMEN PROGRAMADO DE NOTICIAS*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
@@ -406,14 +362,16 @@ function formatNewsForWhatsApp(news: any[]): string {
 }
 
 // Función de envío de WhatsApp mejorada
-async function sendWhatsAppMessage(phoneNumber: string, message: string): Promise<boolean> {
+async function sendWhatsAppMessage(config: any, phoneNumber: string, message: string): Promise<boolean> {
   try {
-    const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
-    const apiKey = Deno.env.get("WHATSAPP_API_KEY") || "";
-    const instanceName = Deno.env.get("WHATSAPP_INSTANCE_NAME") || "SenadoN8N";
-    
-    if (!evolutionApiUrl) {
-      console.error("Evolution API URL no configurada en variables de entorno");
+    console.log(`📱 Configuración para envío:`, {
+      hasUrl: !!config.evolutionApiUrl,
+      hasApiKey: !!config.apiKey,
+      method: config.connectionMethod
+    });
+
+    if (!config.evolutionApiUrl || config.evolutionApiUrl.trim() === '') {
+      console.error("❌ Evolution API URL no configurada");
       return false;
     }
     
@@ -426,7 +384,7 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
     }
     
     if (cleanNumber.length < 12) {
-      console.error(`Número inválido: ${phoneNumber} -> ${cleanNumber}`);
+      console.error(`❌ Número inválido: ${phoneNumber} -> ${cleanNumber}`);
       return false;
     }
     
@@ -434,8 +392,8 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
       'Content-Type': 'application/json'
     };
     
-    if (apiKey) {
-      headers['apikey'] = apiKey;
+    if (config.apiKey && config.apiKey.trim() !== '') {
+      headers['apikey'] = config.apiKey;
     }
     
     const payload = {
@@ -443,17 +401,19 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
       text: message
     };
     
-    console.log(`Enviando WhatsApp a ${cleanNumber} vía ${evolutionApiUrl}`);
+    console.log(`📤 Enviando WhatsApp a ${cleanNumber} vía ${config.evolutionApiUrl}`);
     
     // Intentar múltiples endpoints
     const apiUrls = [
-      `${evolutionApiUrl}/message/sendText/${instanceName}`,
-      `${evolutionApiUrl}/message/send-text/${instanceName}`,
-      `${evolutionApiUrl}/send-message/${instanceName}`
+      `${config.evolutionApiUrl.trim()}/message/sendText/SenadoN8N`,
+      `${config.evolutionApiUrl.trim()}/message/send-text/SenadoN8N`,
+      `${config.evolutionApiUrl.trim()}/send-message/SenadoN8N`
     ];
 
     for (const apiUrl of apiUrls) {
       try {
+        console.log(`🔗 Intentando URL: ${apiUrl}`);
+        
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
         
@@ -468,11 +428,11 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
         
         if (response.ok) {
           const result = await response.json();
-          console.log(`WhatsApp enviado exitosamente a ${phoneNumber}:`, result);
+          console.log(`✅ WhatsApp enviado exitosamente a ${phoneNumber}:`, result);
           return true;
         } else {
           const errorText = await response.text();
-          console.error(`Error enviando WhatsApp a ${phoneNumber} con ${apiUrl}: ${response.status} - ${errorText}`);
+          console.error(`❌ Error HTTP ${response.status} con ${apiUrl}: ${errorText}`);
           
           // Si es 404, probar siguiente URL
           if (response.status === 404) {
@@ -482,7 +442,7 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
           return false;
         }
       } catch (fetchError: any) {
-        console.error(`Error de conexión enviando WhatsApp a ${phoneNumber} con ${apiUrl}:`, fetchError);
+        console.error(`❌ Error de conexión con ${apiUrl}:`, fetchError.message);
         
         // Si no es el último URL, continuar
         if (apiUrl !== apiUrls[apiUrls.length - 1]) {
@@ -496,7 +456,7 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string): Promis
     return false;
     
   } catch (error: any) {
-    console.error(`Error general enviando WhatsApp a ${phoneNumber}:`, error);
+    console.error(`💥 Error general enviando WhatsApp a ${phoneNumber}:`, error);
     return false;
   }
 }
