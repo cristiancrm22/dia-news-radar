@@ -273,6 +273,53 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_automated_logs: {
+        Row: {
+          error_message: string | null
+          execution_type: string
+          id: string
+          message_content: string
+          news_count: number
+          phone_number: string
+          sent_at: string
+          status: string
+          subscription_id: string | null
+          user_id: string
+        }
+        Insert: {
+          error_message?: string | null
+          execution_type?: string
+          id?: string
+          message_content: string
+          news_count?: number
+          phone_number: string
+          sent_at?: string
+          status?: string
+          subscription_id?: string | null
+          user_id: string
+        }
+        Update: {
+          error_message?: string | null
+          execution_type?: string
+          id?: string
+          message_content?: string
+          news_count?: number
+          phone_number?: string
+          sent_at?: string
+          status?: string
+          subscription_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_automated_logs_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_messages: {
         Row: {
           created_at: string | null

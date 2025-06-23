@@ -35,23 +35,10 @@ export class ScheduledWhatsAppService {
 
       console.log('Agregando suscripción:', subscription);
 
-      // Verificar si ya existe una suscripción para este número usando RPC
-      const { data: existing, error: existingError } = await supabase
-        .rpc('check_existing_subscription', {
-          p_user_id: user.id,
-          p_phone_number: subscription.phoneNumber
-        });
+      // REMOVIDO: Ya no verificamos si existe una suscripción para este número
+      // Permitimos múltiples suscripciones para el mismo número con diferentes horarios/configuraciones
 
-      if (existingError) {
-        console.error('Error checking existing subscription:', existingError);
-        return { success: false, error: existingError.message };
-      }
-
-      if (existing && existing.length > 0) {
-        return { success: false, error: 'Ya existe una suscripción para este número' };
-      }
-
-      // Insertar nueva suscripción
+      // Insertar nueva suscripción directamente
       const { data, error } = await supabase
         .from('whatsapp_subscriptions')
         .insert({

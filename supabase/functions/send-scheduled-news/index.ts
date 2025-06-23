@@ -117,9 +117,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`🚀 Iniciando procesamiento de ${subscriptionsToProcess.length} suscripciones`);
 
+    // MEJORADO: Ejecutar recolección de noticias ANTES del envío con el script Python completo
+    console.log("📰 Ejecutando recolección de noticias...");
+    const newsExecuted = await executeNewsGatheringWithPython();
+    
+    if (!newsExecuted) {
+      console.log("⚠️ No se pudo ejecutar la recolección de noticias, continuando con noticias disponibles...");
+    }
+
     // OBTENER NOTICIAS (con fallback a mensaje sin noticias)
     const todayNews = await getAvailableNews();
-    console.log(`📰 Noticias obtenidas: ${todayNews.length}`);
+    console.log(`📰 Noticias finales obtenidas: ${todayNews.length}`);
     results.totalNews = todayNews.length;
     
     // OBTENER CONFIGURACIÓN DE WHATSAPP del primer usuario activo
@@ -151,14 +159,49 @@ const handler = async (req: Request): Promise<Response> => {
             .update({ last_sent: argentinaTime.toISOString() })
             .eq('id', subscription.id);
 
+          // NUEVO: Registrar log del mensaje automático
+          await logAutomatedMessage(
+            subscription.user_id,
+            subscription.id,
+            subscription.phone_number,
+            newsMessage,
+            todayNews.length,
+            'sent',
+            'scheduled'
+          );
+
           results.whatsappSent++;
           console.log(`✅ Mensaje enviado exitosamente a ${subscription.phone_number}`);
         } else {
+          // NUEVO: Registrar log del error
+          await logAutomatedMessage(
+            subscription.user_id,
+            subscription.id,
+            subscription.phone_number,
+            newsMessage,
+            todayNews.length,
+            'error',
+            'scheduled',
+            'Error al enviar mensaje'
+          );
+
           results.errors.push(`${subscription.phone_number}: Error al enviar`);
           console.error(`❌ Error enviando a ${subscription.phone_number}`);
         }
 
       } catch (error: any) {
+        // NUEVO: Registrar log del error
+        await logAutomatedMessage(
+          subscription.user_id,
+          subscription.id,
+          subscription.phone_number,
+          '',
+          todayNews.length,
+          'error',
+          'scheduled',
+          error.message
+        );
+
         results.errors.push(`${subscription.phone_number}: ${error.message}`);
         console.error(`💥 Error procesando ${subscription.phone_number}:`, error);
       }
@@ -185,6 +228,128 @@ const handler = async (req: Request): Promise<Response> => {
     });
   }
 };
+
+// NUEVA FUNCIÓN: Ejecutar recolección de noticias con Python
+async function executeNewsGatheringWithPython(): Promise<boolean> {
+  try {
+    console.log("🐍 Iniciando recolección de noticias con Python...");
+    
+    // Intentar ejecutar via API local primero
+    try {
+      const response = await fetch("http://localhost:8000/api/news/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          source: "scheduled", 
+          executeScript: true,
+          forceExecution: true 
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`✅ Recolección via API completada: ${result.count || 0} noticias`);
+        return true;
+      } else {
+        console.log(`⚠️ API de noticias respondió con ${response.status}`);
+      }
+    } catch (apiError) {
+      console.log("⚠️ API de noticias no disponible");
+    }
+
+    // Intentar ejecutar directamente el script Python
+    try {
+      console.log("🔧 Intentando ejecutar radar_optimo.py directamente...");
+      
+      // Comando para ejecutar el script de Python
+      const pythonCommand = new Deno.Command("python3", {
+        args: [
+          "src/server/radar_optimo.py",
+          "--keywords", JSON.stringify(["Kicillof", "Magario", "Milei", "Espinosa"]),
+          "--sources", JSON.stringify([
+            "https://www.clarin.com",
+            "https://www.lanacion.com.ar", 
+            "https://www.infobae.com",
+            "https://www.pagina12.com.ar"
+          ]),
+          "--output", "src/server/noticias.csv",
+          "--today-only",
+          "--max-results", "20"
+        ],
+        stdout: "piped",
+        stderr: "piped"
+      });
+
+      const child = pythonCommand.spawn();
+      const { code, stdout, stderr } = await child.output();
+      
+      const outputText = new TextDecoder().decode(stdout);
+      const errorText = new TextDecoder().decode(stderr);
+      
+      console.log(`🐍 Código de salida Python: ${code}`);
+      if (outputText) console.log(`📝 Salida Python: ${outputText.slice(0, 500)}...`);
+      if (errorText) console.log(`❌ Error Python: ${errorText.slice(0, 500)}...`);
+      
+      if (code === 0) {
+        console.log("✅ Script Python ejecutado correctamente");
+        return true;
+      } else {
+        console.log(`❌ Script Python falló con código ${code}`);
+      }
+      
+    } catch (pythonError: any) {
+      console.log(`❌ Error ejecutando Python: ${pythonError.message}`);
+    }
+
+    // Registrar la ejecución en radar_logs
+    await supabase
+      .from('radar_logs')
+      .insert({
+        operation: 'scheduled_news_gathering',
+        status: 'attempted',
+        parameters: { triggered_by: 'scheduled_whatsapp', timestamp: new Date().toISOString() },
+        results: { message: 'News gathering attempted from scheduled WhatsApp' }
+      });
+
+    console.log("📝 Recolección de noticias registrada en logs");
+    return false;
+    
+  } catch (error: any) {
+    console.error("❌ Error en recolección de noticias:", error);
+    return false;
+  }
+}
+
+// NUEVA FUNCIÓN: Registrar mensaje automático en la base de datos
+async function logAutomatedMessage(
+  userId: string,
+  subscriptionId: string,
+  phoneNumber: string,
+  messageContent: string,
+  newsCount: number,
+  status: 'sent' | 'error',
+  executionType: 'scheduled' | 'manual',
+  errorMessage?: string
+): Promise<void> {
+  try {
+    await supabase
+      .from('whatsapp_automated_logs')
+      .insert({
+        user_id: userId,
+        subscription_id: subscriptionId,
+        phone_number: phoneNumber,
+        message_content: messageContent,
+        news_count: newsCount,
+        status: status,
+        execution_type: executionType,
+        error_message: errorMessage
+      });
+    
+    console.log(`📝 Log registrado para ${phoneNumber}: ${status}`);
+  } catch (error: any) {
+    console.error(`❌ Error registrando log para ${phoneNumber}:`, error);
+  }
+}
 
 // FUNCIÓN CORREGIDA: Evaluación mejorada del horario programado
 function shouldSendMessage(subscription: any, currentTime: string, currentDay: number, currentDateTime: Date): boolean {
