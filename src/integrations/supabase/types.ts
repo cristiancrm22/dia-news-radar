@@ -9,6 +9,92 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      email_automated_logs: {
+        Row: {
+          email_address: string
+          error_message: string | null
+          execution_type: string
+          id: string
+          message_content: string
+          news_count: number
+          sent_at: string
+          status: string
+          subscription_id: string | null
+          user_id: string
+        }
+        Insert: {
+          email_address: string
+          error_message?: string | null
+          execution_type?: string
+          id?: string
+          message_content: string
+          news_count?: number
+          sent_at?: string
+          status?: string
+          subscription_id?: string | null
+          user_id: string
+        }
+        Update: {
+          email_address?: string
+          error_message?: string | null
+          execution_type?: string
+          id?: string
+          message_content?: string
+          news_count?: number
+          sent_at?: string
+          status?: string
+          subscription_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_automated_logs_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "email_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_subscriptions: {
+        Row: {
+          created_at: string
+          email_address: string
+          frequency: string
+          id: string
+          is_active: boolean
+          last_sent: string | null
+          scheduled_time: string
+          updated_at: string
+          user_id: string
+          weekdays: number[] | null
+        }
+        Insert: {
+          created_at?: string
+          email_address: string
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          last_sent?: string | null
+          scheduled_time?: string
+          updated_at?: string
+          user_id: string
+          weekdays?: number[] | null
+        }
+        Update: {
+          created_at?: string
+          email_address?: string
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          last_sent?: string | null
+          scheduled_time?: string
+          updated_at?: string
+          user_id?: string
+          weekdays?: number[] | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null

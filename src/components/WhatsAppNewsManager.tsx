@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,11 @@ import { WhatsAppService } from "@/services/WhatsAppService";
 import { useLogs } from "@/hooks/useLogs";
 import LogViewer from "@/components/LogViewer";
 import WhatsAppSubscriptionManager from "@/components/WhatsAppSubscriptionManager";
+import WhatsAppAutomatedLogs from "@/components/WhatsAppAutomatedLogs";
+import EmailSubscriptionManager from "@/components/EmailSubscriptionManager";
+import EmailAutomatedLogs from "@/components/EmailAutomatedLogs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, Send, MessageSquare, Users } from "lucide-react";
+import { Clock, Send, MessageSquare, Users, FileText, Mail } from "lucide-react";
 import RadarLogsViewer from "@/components/RadarLogsViewer";
 
 const WhatsAppNewsManager = () => {
@@ -69,18 +73,21 @@ const WhatsAppNewsManager = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
-            Gestión de Noticias por WhatsApp
+            Gestión de Noticias Automáticas
           </CardTitle>
           <CardDescription>
-            Configure el envío automático de noticias y gestione suscripciones por WhatsApp
+            Configure el envío automático de noticias por WhatsApp y Email
           </CardDescription>
         </CardHeader>
       </Card>
 
       <Tabs defaultValue="test" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="test">Prueba Manual</TabsTrigger>
-          <TabsTrigger value="scheduled">Envío Programado</TabsTrigger>
+          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="email">Email</TabsTrigger>
+          <TabsTrigger value="whatsapp-logs">Logs WhatsApp</TabsTrigger>
+          <TabsTrigger value="email-logs">Logs Email</TabsTrigger>
           <TabsTrigger value="radar-logs">Logs Radar.py</TabsTrigger>
         </TabsList>
         
@@ -127,8 +134,20 @@ const WhatsAppNewsManager = () => {
           </Card>
         </TabsContent>
         
-        <TabsContent value="scheduled" className="space-y-6">
+        <TabsContent value="whatsapp" className="space-y-6">
           <WhatsAppSubscriptionManager />
+        </TabsContent>
+
+        <TabsContent value="email" className="space-y-6">
+          <EmailSubscriptionManager />
+        </TabsContent>
+
+        <TabsContent value="whatsapp-logs" className="space-y-6">
+          <WhatsAppAutomatedLogs />
+        </TabsContent>
+
+        <TabsContent value="email-logs" className="space-y-6">
+          <EmailAutomatedLogs />
         </TabsContent>
 
         <TabsContent value="radar-logs" className="space-y-6">
