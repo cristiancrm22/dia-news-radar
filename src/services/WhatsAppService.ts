@@ -1,4 +1,3 @@
-
 import { WhatsAppConfig } from "@/types/news";
 
 export interface WhatsAppSendResult {
@@ -47,7 +46,8 @@ export class WhatsAppService {
         
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
         };
         
         if (config.apiKey) {
@@ -55,7 +55,9 @@ export class WhatsAppService {
           headers['Authorization'] = `Bearer ${config.apiKey}`;
         }
         
+        // CORREGIDO: Usar nombre de instancia fijo
         const instanceName = "SenadoN8N";
+        onLog?.('info', `Usando instancia CORREGIDA: ${instanceName}`);
         
         const payload = {
           number: cleanNumber,

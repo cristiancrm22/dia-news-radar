@@ -18,13 +18,158 @@ interface ScheduledEmailRequest {
   scheduled?: boolean;
 }
 
+// CORREGIDO: Función para obtener noticias usando parámetros del usuario
+async function getNewsWithUserParameters(userId: string): Promise<any[]> {
+  try {
+    console.log(`🔍 OBTENIENDO NOTICIAS CON PARÁMETROS DEL USUARIO: ${userId}`);
+    
+    // **PASO 1: OBTENER PALABRAS CLAVE DEL USUARIO**
+    const { data: keywords, error: keywordsError } = await supabase
+      .from('user_keywords')
+      .select('keyword')
+      .eq('user_id', userId);
+
+    if (keywordsError) {
+      console.error('❌ Error obteniendo palabras clave:', keywordsError);
+      return [];
+    }
+
+    const userKeywords = keywords?.map(k => k.keyword) || [];
+    console.log(`📝 Palabras clave del usuario: ${userKeywords.join(', ')}`);
+
+    // **PASO 2: OBTENER FUENTES HABILITADAS DEL USUARIO**
+    const { data: sources, error: sourcesError } = await supabase
+      .from('user_news_sources')
+      .select('name, url')
+      .eq('user_id', userId)
+      .eq('enabled', true);
+
+    if (sourcesError) {
+      console.error('❌ Error obteniendo fuentes:', sourcesError);
+      return [];
+    }
+
+    const enabledSources = sources || [];
+    console.log(`📰 Fuentes habilitadas: ${enabledSources.map(s => s.name).join(', ')}`);
+
+    // **PASO 3: OBTENER CONFIGURACIÓN DE BÚSQUEDA**
+    const { data: searchSettings, error: settingsError } = await supabase
+      .from('user_search_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (settingsError) {
+      console.error('❌ Error obteniendo configuración:', settingsError);
+    }
+
+    const settings = searchSettings || {
+      max_results: 50,
+      include_twitter: true,
+      validate_links: true,
+      current_date_only: true,
+      deep_scrape: true
+    };
+
+    console.log(`⚙️ Configuración de búsqueda:`, settings);
+
+    // **PASO 4: OBTENER USUARIOS DE TWITTER**
+    const { data: twitterUsers, error: twitterError } = await supabase
+      .from('user_twitter_users')
+      .select('twitter_username')
+      .eq('user_id', userId);
+
+    const userTwitterUsers = twitterUsers?.map(t => t.twitter_username) || [];
+    console.log(`🐦 Usuarios de Twitter: ${userTwitterUsers.join(', ')}`);
+
+    // **PASO 5: INTENTAR OBTENER NOTICIAS DESDE EL SERVIDOR PYTHON LOCAL**
+    try {
+      console.log('🐍 Intentando ejecutar búsqueda con parámetros del usuario...');
+      
+      const pythonPayload = {
+        keywords: userKeywords,
+        sources: enabledSources.map(s => s.url),
+        includeTwitter: settings.include_twitter,
+        maxResults: settings.max_results,
+        validateLinks: settings.validate_links,
+        currentDateOnly: settings.current_date_only,
+        deepScrape: settings.deep_scrape,
+        twitterUsers: userTwitterUsers,
+        executeScript: true,
+        forceExecution: true
+      };
+
+      console.log('📤 Payload para Python:', pythonPayload);
+
+      const response = await fetch("http://localhost:8000/api/news/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pythonPayload)
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.news && result.news.length > 0) {
+          console.log(`✅ Noticias obtenidas desde Python: ${result.news.length}`);
+          return result.news;
+        }
+      }
+      
+      console.log(`⚠️ Servidor Python no disponible o sin noticias`);
+    } catch (pythonError) {
+      console.log("⚠️ Error conectando con servidor Python:", pythonError);
+    }
+
+    // **PASO 6: FALLBACK A RADAR_LOGS PARA OBTENER NOTICIAS RECIENTES**
+    try {
+      const { data: radarLogs } = await supabase
+        .from('radar_logs')
+        .select('results')
+        .eq('status', 'completed')
+        .not('results', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (radarLogs && radarLogs.length > 0 && radarLogs[0].results) {
+        const results = radarLogs[0].results as any;
+        if (results.news && Array.isArray(results.news) && results.news.length > 0) {
+          console.log(`📰 Noticias desde radar_logs: ${results.news.length}`);
+          
+          // Filtrar noticias por palabras clave del usuario
+          let filteredNews = results.news;
+          if (userKeywords.length > 0) {
+            filteredNews = results.news.filter((item: any) => {
+              const text = `${item.title} ${item.summary || item.description || ''}`.toLowerCase();
+              return userKeywords.some(keyword => 
+                text.includes(keyword.toLowerCase())
+              );
+            });
+            console.log(`🔍 Noticias filtradas por palabras clave: ${filteredNews.length}`);
+          }
+          
+          return filteredNews;
+        }
+      }
+    } catch (supabaseError) {
+      console.log("⚠️ Error obteniendo noticias desde radar_logs:", supabaseError);
+    }
+
+    console.log("📰 No se encontraron noticias con los parámetros del usuario");
+    return [];
+    
+  } catch (error: any) {
+    console.error('💥 Error obteniendo noticias con parámetros del usuario:', error);
+    return [];
+  }
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log("=== PROCESANDO ENVÍO PROGRAMADO DE EMAILS ===");
+    console.log("=== PROCESANDO ENVÍO PROGRAMADO DE EMAILS CON PARÁMETROS DE USUARIO ===");
     console.log("Timestamp actual:", new Date().toISOString());
     
     const body = await req.json();
@@ -103,39 +248,33 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`🚀 Iniciando procesamiento de ${subscriptionsToProcess.length} suscripciones de email`);
 
-    // Ejecutar recolección de noticias ANTES del envío
-    console.log("📰 Ejecutando recolección de noticias...");
-    const newsExecuted = await executeNewsGatheringWithPython();
-    
-    if (!newsExecuted) {
-      console.log("⚠️ No se pudo ejecutar la recolección de noticias, continuando con noticias disponibles...");
-    }
-
-    // OBTENER NOTICIAS
-    const todayNews = await getAvailableNews();
-    console.log(`📰 Noticias finales obtenidas: ${todayNews.length}`);
-    results.totalNews = todayNews.length;
-    
+    // Procesar cada suscripción individualmente con sus parámetros
     for (const subscription of subscriptionsToProcess) {
       try {
-        console.log(`📤 Enviando email a ${subscription.email_address}...`);
+        console.log(`📤 Enviando email a ${subscription.email_address} para usuario ${subscription.user_id}...`);
+
+        // **OBTENER NOTICIAS CON PARÁMETROS ESPECÍFICOS DEL USUARIO**
+        const todayNews = await getNewsWithUserParameters(subscription.user_id);
+        console.log(`📰 Noticias obtenidas para ${subscription.email_address}: ${todayNews.length}`);
+        results.totalNews += todayNews.length;
 
         let emailContent: string;
         let emailSubject: string;
         
         if (todayNews.length === 0) {
-          emailSubject = "No hay noticias hoy - News Radar";
+          emailSubject = "Sin noticias nuevas - News Radar";
           emailContent = formatNoNewsEmailHTML();
         } else {
-          emailSubject = "Resumen de noticias - News Radar";
+          emailSubject = "Noticias Monitoreadas - News Radar";
           emailContent = formatNewsEmailHTML(todayNews);
         }
 
-        // Enviar email via Python
-        const sent = await sendEmailViaPython(
+        // Enviar email via función SMTP corregida
+        const sent = await sendEmailViaSMTP(
           subscription.email_address, 
           emailSubject,
-          emailContent
+          emailContent,
+          subscription.user_id
         );
         
         if (sent) {
@@ -182,7 +321,7 @@ const handler = async (req: Request): Promise<Response> => {
           subscription.id,
           subscription.email_address,
           '',
-          todayNews.length,
+          0,
           'failed',
           'scheduled',
           error.message
@@ -193,7 +332,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`🏁 RESUMEN FINAL: ${results.emailsSent} emails enviados, ${results.errors.length} errores, ${results.totalNews} noticias`);
+    console.log(`🏁 RESUMEN FINAL: ${results.emailsSent} emails enviados, ${results.errors.length} errores, ${results.totalNews} noticias total`);
     
     return new Response(JSON.stringify({ 
       success: true,
@@ -214,52 +353,6 @@ const handler = async (req: Request): Promise<Response> => {
     });
   }
 };
-
-// Ejecutar recolección de noticias con Python
-async function executeNewsGatheringWithPython(): Promise<boolean> {
-  try {
-    console.log("🐍 Iniciando recolección de noticias con Python...");
-    
-    try {
-      const response = await fetch("http://localhost:8000/api/news/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          source: "scheduled_email", 
-          executeScript: true,
-          forceExecution: true 
-        })
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`✅ Recolección via API completada: ${result.count || 0} noticias`);
-        return true;
-      } else {
-        console.log(`⚠️ API de noticias respondió con ${response.status}`);
-      }
-    } catch (apiError) {
-      console.log("⚠️ API de noticias no disponible");
-    }
-
-    // Registrar la ejecución en radar_logs
-    await supabase
-      .from('radar_logs')
-      .insert({
-        operation: 'scheduled_email_news_gathering',
-        status: 'attempted',
-        parameters: { triggered_by: 'scheduled_email', timestamp: new Date().toISOString() },
-        results: { message: 'News gathering attempted from scheduled email' }
-      });
-
-    console.log("📝 Recolección de noticias registrada en logs");
-    return false;
-    
-  } catch (error: any) {
-    console.error("❌ Error en recolección de noticias:", error);
-    return false;
-  }
-}
 
 // Registrar email automático en la base de datos
 async function logAutomatedEmail(
@@ -344,57 +437,6 @@ function shouldSendEmail(subscription: any, currentTime: string, currentDay: num
   return false;
 }
 
-// Obtener noticias disponibles
-async function getAvailableNews(): Promise<any[]> {
-  try {
-    console.log("=== OBTENIENDO NOTICIAS DISPONIBLES ===");
-    
-    try {
-      const response = await fetch("http://localhost:8000/api/news/today", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`📰 Noticias del cache local: ${data.news?.length || 0}`);
-        if (data.news && data.news.length > 0) {
-          return data.news;
-        }
-      }
-    } catch (localError) {
-      console.log("ℹ️ Cache local no disponible, continuando...");
-    }
-
-    try {
-      const { data: radarLogs } = await supabase
-        .from('radar_logs')
-        .select('results')
-        .eq('status', 'completed')
-        .not('results', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (radarLogs && radarLogs.length > 0 && radarLogs[0].results) {
-        const results = radarLogs[0].results as any;
-        if (results.news && Array.isArray(results.news) && results.news.length > 0) {
-          console.log(`📰 Noticias desde Supabase: ${results.news.length}`);
-          return results.news;
-        }
-      }
-    } catch (supabaseError) {
-      console.log("ℹ️ No hay noticias en Supabase, continuando...");
-    }
-
-    console.log("📰 No hay noticias disponibles - se enviará mensaje informativo");
-    return [];
-    
-  } catch (error: any) {
-    console.error("Error obteniendo noticias:", error);
-    return [];
-  }
-}
-
 // Formatear HTML para email con noticias
 function formatNewsEmailHTML(news: any[]): string {
   const date = new Date().toLocaleDateString('es-ES', {
@@ -409,7 +451,7 @@ function formatNewsEmailHTML(news: any[]): string {
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Resumen de noticias - News Radar</title>
+        <title>Noticias Monitoreadas - News Radar</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
           .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; border-radius: 8px; overflow: hidden; }
@@ -427,10 +469,11 @@ function formatNewsEmailHTML(news: any[]): string {
       <body>
         <div class="container">
           <div class="header">
-            <h1>📰 Resumen Programado de Noticias</h1>
+            <h1>📰 Noticias Monitoreadas</h1>
             <p>${date}</p>
           </div>
           <div class="content">
+            <p>Noticias encontradas con tus parámetros de monitoreo:</p>
   `;
 
   news.slice(0, 10).forEach((item, index) => {
@@ -475,7 +518,7 @@ function formatNoNewsEmailHTML(): string {
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Sin noticias hoy - News Radar</title>
+        <title>Sin noticias nuevas - News Radar</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
           .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; border-radius: 8px; overflow: hidden; }
@@ -491,9 +534,9 @@ function formatNoNewsEmailHTML(): string {
             <p>${date}</p>
           </div>
           <div class="content">
-            <h2>⚠️ No hay noticias disponibles</h2>
-            <p>No se encontraron noticias nuevas para el día de hoy.</p>
-            <p>Volveremos a buscar cuando tengamos nuevas noticias disponibles.</p>
+            <h2>⚠️ Sin noticias nuevas</h2>
+            <p>No se encontraron noticias nuevas con los parámetros de monitoreo configurados.</p>
+            <p>Continuaremos monitoreando las fuentes y palabras clave configuradas.</p>
           </div>
           <div class="footer">
             <p>Este correo fue enviado automáticamente por News Radar</p>
@@ -504,36 +547,54 @@ function formatNoNewsEmailHTML(): string {
   `;
 }
 
-// Enviar email via Python
-async function sendEmailViaPython(emailAddress: string, subject: string, htmlContent: string): Promise<boolean> {
+// CORREGIDO: Enviar email via función SMTP de Supabase
+async function sendEmailViaSMTP(emailAddress: string, subject: string, htmlContent: string, userId: string): Promise<boolean> {
   try {
-    console.log(`📧 Enviando email a ${emailAddress}...`);
+    console.log(`📧 Enviando email a ${emailAddress} usando configuración SMTP del usuario...`);
     
-    const response = await fetch('http://localhost:8000/api/email/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        smtp_host: 'smtp.gmail.com',
-        smtp_port: 587,
-        smtp_user: Deno.env.get('SMTP_USERNAME') || '',
-        smtp_pass: Deno.env.get('SMTP_PASSWORD') || '',
-        to: emailAddress,
-        subject: subject,
-        html: htmlContent,
-        use_tls: true
-      })
-    });
+    // Obtener configuración SMTP del usuario
+    const { data: emailConfig, error: configError } = await supabase
+      .from('user_email_configs')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
 
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`✅ Email enviado exitosamente a ${emailAddress}`);
-      return result.success === true;
-    } else {
-      console.error(`❌ Error HTTP ${response.status} enviando email a ${emailAddress}`);
+    if (configError || !emailConfig) {
+      console.error(`❌ No se encontró configuración SMTP para usuario ${userId}:`, configError);
       return false;
     }
+
+    if (!emailConfig.smtp_host || !emailConfig.smtp_username || !emailConfig.smtp_password) {
+      console.error(`❌ Configuración SMTP incompleta para usuario ${userId}`);
+      return false;
+    }
+
+    const emailPayload = {
+      to: emailAddress,
+      subject: subject,
+      html: htmlContent,
+      smtpConfig: {
+        host: emailConfig.smtp_host,
+        port: emailConfig.smtp_port || 587,
+        username: emailConfig.smtp_username,
+        password: emailConfig.smtp_password,
+        useTLS: emailConfig.use_tls !== false
+      }
+    };
+
+    console.log(`📧 Invocando función send-email-smtp para ${emailAddress}...`);
+
+    const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-email-smtp', {
+      body: emailPayload
+    });
+
+    if (emailError) {
+      console.error(`❌ Error en función send-email-smtp para ${emailAddress}:`, emailError);
+      return false;
+    }
+
+    console.log(`✅ Email enviado exitosamente a ${emailAddress} via SMTP`);
+    return true;
     
   } catch (error: any) {
     console.error(`💥 Error enviando email a ${emailAddress}:`, error);

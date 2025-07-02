@@ -35,7 +35,6 @@ export class ScheduledWhatsAppService {
 
       console.log('Agregando suscripción:', subscription);
 
-      // Permitimos múltiples suscripciones para el mismo número con diferentes horarios/configuraciones
       const { data, error } = await supabase
         .from('whatsapp_subscriptions')
         .insert({
@@ -180,68 +179,101 @@ export class ScheduledWhatsAppService {
     }
   }
 
-  // MEJORADO: Método de envío inmediato con actualización automática de noticias
+  // MEJORADO: Método de envío inmediato con validación completa
   static async sendNewsToSubscribers(): Promise<{ success: boolean; results?: any; error?: string }> {
     try {
-      console.log('=== ENVÍO INMEDIATO CON ACTUALIZACIÓN AUTOMÁTICA ===');
+      console.log('=== ENVÍO INMEDIATO WHATSAPP CON VALIDACIÓN COMPLETA ===');
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      // **PASO 1: ACTUALIZAR NOTICIAS AUTOMÁTICAMENTE**
-      console.log('🔄 Actualizando noticias antes del envío...');
-      try {
-        const updateResponse = await fetch("http://localhost:8000/api/news/update", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+      // **PASO 1: VERIFICAR CONFIGURACIÓN DE WHATSAPP**
+      console.log('🔧 Verificando configuración de WhatsApp...');
+      const { data: whatsappConfig, error: configError } = await supabase
+        .from('user_whatsapp_configs')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
 
-        if (updateResponse.ok) {
-          const updateResult = await updateResponse.json();
-          console.log(`✅ Noticias actualizadas: ${updateResult.total || 0} noticias`);
-        } else {
-          console.log('⚠️ No se pudieron actualizar las noticias, usando noticias existentes');
-        }
-      } catch (updateError) {
-        console.log('⚠️ Error actualizando noticias, usando noticias existentes:', updateError);
+      if (configError || !whatsappConfig) {
+        console.error('❌ No se encontró configuración de WhatsApp:', configError);
+        return { success: false, error: 'Configuración de WhatsApp no encontrada. Configure su WhatsApp primero.' };
       }
 
-      // **PASO 2: USAR LA FUNCIÓN EDGE MEJORADA**
-      console.log('📤 Enviando a través de función Edge con noticias actualizadas...');
+      if (!whatsappConfig.evolution_api_url) {
+        return { success: false, error: 'URL de Evolution API no configurada' };
+      }
+
+      console.log('✅ Configuración de WhatsApp válida');
+
+      // **PASO 2: VERIFICAR SUSCRIPCIONES ACTIVAS**
+      const { data: subscriptions, error: subsError } = await supabase
+        .from('whatsapp_subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      if (subsError) {
+        console.error('❌ Error obteniendo suscripciones:', subsError);
+        return { success: false, error: `Error obteniendo suscripciones: ${subsError.message}` };
+      }
+
+      if (!subscriptions || subscriptions.length === 0) {
+        return { success: false, error: 'No hay suscripciones activas configuradas' };
+      }
+
+      console.log(`📱 Suscripciones activas encontradas: ${subscriptions.length}`);
+
+      // **PASO 3: LLAMAR A LA FUNCIÓN EDGE MEJORADA**
+      console.log('📤 Enviando a través de función Edge mejorada...');
       
       const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
         body: {
           type: 'whatsapp',
           scheduled: false, // Envío inmediato
-          force: true // Forzar envío
+          force: true // Forzar envío independientemente de horarios
         }
       });
 
       if (error) {
         console.error('❌ Error en función Edge:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: `Error en función Edge: ${error.message}` };
       }
 
       console.log('✅ Resultado de función Edge:', data);
       
+      // Verificar si el resultado indica éxito
+      if (data && typeof data === 'object') {
+        const results = data.results || {};
+        return {
+          success: data.success !== false, // Si no está definido o es true, consideramos éxito
+          results: {
+            sent: results.sent || 0,
+            total: results.total || subscriptions.length,
+            errors: results.errors || 0,
+            errorDetails: results.errorDetails || [],
+            newsCount: results.newsCount || 0,
+            message: data.message || "Enviado con función Edge mejorada"
+          }
+        };
+      }
+
       return {
         success: true,
-        results: data.results || {
+        results: {
           sent: 0,
-          total: 0,
-          errors: [],
+          total: subscriptions.length,
+          errors: 0,
           newsCount: 0,
-          message: "Enviado con actualización automática de noticias"
+          message: "Procesado correctamente"
         }
       };
 
     } catch (error: any) {
-      console.error('Error in sendNewsToSubscribers:', error);
-      return { success: false, error: error.message };
+      console.error('💥 Error crítico en sendNewsToSubscribers:', error);
+      return { success: false, error: `Error crítico: ${error.message}` };
     }
   }
 

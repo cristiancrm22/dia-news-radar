@@ -180,68 +180,101 @@ export class ScheduledEmailService {
     }
   }
 
-  // MEJORADO: Método de envío inmediato con actualización automática de noticias
+  // MEJORADO: Método de envío inmediato con validación completa
   static async sendNewsToSubscribers(): Promise<{ success: boolean; results?: any; error?: string }> {
     try {
-      console.log('=== ENVÍO INMEDIATO DE EMAILS CON ACTUALIZACIÓN AUTOMÁTICA ===');
+      console.log('=== ENVÍO INMEDIATO EMAILS CON VALIDACIÓN COMPLETA ===');
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      // **PASO 1: ACTUALIZAR NOTICIAS AUTOMÁTICAMENTE**
-      console.log('🔄 Actualizando noticias antes del envío de emails...');
-      try {
-        const updateResponse = await fetch("http://localhost:8000/api/news/update", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+      // **PASO 1: VERIFICAR CONFIGURACIÓN DE EMAIL**
+      console.log('🔧 Verificando configuración de email...');
+      const { data: emailConfig, error: configError } = await supabase
+        .from('user_email_configs')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
 
-        if (updateResponse.ok) {
-          const updateResult = await updateResponse.json();
-          console.log(`✅ Noticias actualizadas: ${updateResult.total || 0} noticias`);
-        } else {
-          console.log('⚠️ No se pudieron actualizar las noticias, usando noticias existentes');
-        }
-      } catch (updateError) {
-        console.log('⚠️ Error actualizando noticias, usando noticias existentes:', updateError);
+      if (configError || !emailConfig) {
+        console.error('❌ No se encontró configuración de email:', configError);
+        return { success: false, error: 'Configuración de email no encontrada. Configure su email SMTP primero.' };
       }
 
-      // **PASO 2: USAR LA FUNCIÓN EDGE MEJORADA**
-      console.log('📧 Enviando emails a través de función Edge con noticias actualizadas...');
+      if (!emailConfig.smtp_host || !emailConfig.smtp_username || !emailConfig.smtp_password) {
+        return { success: false, error: 'Configuración de email incompleta (falta SMTP host, usuario o contraseña)' };
+      }
+
+      console.log('✅ Configuración de email válida');
+
+      // **PASO 2: VERIFICAR SUSCRIPCIONES ACTIVAS**
+      const { data: subscriptions, error: subsError } = await supabase
+        .from('email_subscriptions' as any)
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      if (subsError) {
+        console.error('❌ Error obteniendo suscripciones:', subsError);
+        return { success: false, error: `Error obteniendo suscripciones: ${subsError.message}` };
+      }
+
+      if (!subscriptions || subscriptions.length === 0) {
+        return { success: false, error: 'No hay suscripciones de email activas configuradas' };
+      }
+
+      console.log(`📧 Suscripciones de email activas encontradas: ${subscriptions.length}`);
+
+      // **PASO 3: LLAMAR A LA FUNCIÓN EDGE MEJORADA**
+      console.log('📧 Enviando emails a través de función Edge mejorada...');
       
       const { data, error } = await supabase.functions.invoke('send-scheduled-news', {
         body: {
           type: 'email',
           scheduled: false, // Envío inmediato
-          force: true // Forzar envío
+          force: true // Forzar envío independientemente de horarios
         }
       });
 
       if (error) {
         console.error('❌ Error en función Edge:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: `Error en función Edge: ${error.message}` };
       }
 
       console.log('✅ Resultado de función Edge:', data);
       
+      // Verificar si el resultado indica éxito
+      if (data && typeof data === 'object') {
+        const results = data.results || {};
+        return {
+          success: data.success !== false, // Si no está definido o es true, consideramos éxito
+          results: {
+            sent: results.sent || 0,
+            total: results.total || subscriptions.length,
+            errors: results.errors || 0,
+            errorDetails: results.errorDetails || [],
+            newsCount: results.newsCount || 0,
+            message: data.message || "Emails enviados con función Edge mejorada"
+          }
+        };
+      }
+
       return {
         success: true,
-        results: data.results || {
+        results: {
           sent: 0,
-          total: 0,
-          errors: [],
+          total: subscriptions.length,
+          errors: 0,
           newsCount: 0,
-          message: "Emails enviados con actualización automática de noticias"
+          message: "Procesado correctamente"
         }
       };
 
     } catch (error: any) {
-      console.error('Error in sendNewsToSubscribers:', error);
-      return { success: false, error: error.message };
+      console.error('💥 Error crítico en sendNewsToSubscribers:', error);
+      return { success: false, error: `Error crítico: ${error.message}` };
     }
   }
 
@@ -250,7 +283,6 @@ export class ScheduledEmailService {
     try {
       console.log('Obteniendo noticias para envío inmediato de emails...');
       
-      // Primero intentar obtener noticias ya procesadas del servidor local
       try {
         const response = await fetch("http://localhost:8000/api/news/today");
         
@@ -265,7 +297,6 @@ export class ScheduledEmailService {
         console.log('Cache local no disponible, intentando otras fuentes...');
       }
       
-      // Si no hay noticias en cache, intentar desde el servicio principal
       try {
         const newsFromService = await NewsService.getNews();
         console.log(`Noticias del servicio principal: ${newsFromService.length}`);

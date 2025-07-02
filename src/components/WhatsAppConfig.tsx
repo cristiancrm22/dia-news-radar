@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ const WhatsAppConfig = () => {
   
   const [testMessage, setTestMessage] = useState("");
   const [testPhone, setTestPhone] = useState("");
+  // CORREGIDO: Usar nombre de instancia fijo
   const [instanceName, setInstanceName] = useState("SenadoN8N");
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -230,12 +232,14 @@ const WhatsAppConfig = () => {
                       <Label htmlFor="instance-name">Nombre de la instancia</Label>
                       <Input
                         id="instance-name"
-                        placeholder="Ejemplo: SenadoN8N"
+                        placeholder="SenadoN8N"
                         value={instanceName}
                         onChange={(e) => setInstanceName(e.target.value)}
+                        disabled
+                        className="bg-gray-100"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Nombre de la instancia configurada en Evolution Manager
+                        <strong>FIJO:</strong> Nombre de la instancia configurada en Evolution Manager (no modificable)
                       </p>
                     </div>
                   </div>
