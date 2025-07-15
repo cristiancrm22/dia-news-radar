@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -6,29 +7,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// CORREGIDO: Función mejorada para ejecutar búsqueda de noticias
-async function executeNewsSearch(userId: string, supabase: any): Promise<{ success: boolean; news?: any[]; error?: string }> {
+// CORREGIDO: Función para ejecutar búsqueda usando el MISMO proceso que la pantalla principal
+async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): Promise<{ success: boolean; news?: any[]; error?: string }> {
   try {
-    console.log(`🔍 EJECUTANDO BÚSQUEDA DE NOTICIAS PARA USUARIO: ${userId}`);
+    console.log(`🔍 EJECUTANDO BÚSQUEDA COMO PANTALLA PRINCIPAL PARA USUARIO: ${userId}`);
     
-    // **PASO 1: OBTENER PALABRAS CLAVE DEL USUARIO**
-    const { data: keywords, error: keywordsError } = await supabase
-      .from('user_keywords')
-      .select('keyword')
-      .eq('user_id', userId);
-
-    if (keywordsError) {
-      console.error('❌ Error obteniendo palabras clave:', keywordsError);
-      return { success: false, error: `Error obteniendo palabras clave: ${keywordsError.message}` };
-    }
-
-    const userKeywords = keywords?.map(k => k.keyword) || [];
-    console.log(`📝 Palabras clave del usuario: ${userKeywords.join(', ')}`);
-
-    // **PASO 2: OBTENER FUENTES HABILITADAS DEL USUARIO**
+    // **PASO 1: OBTENER CONFIGURACIÓN EXACTA COMO LA PANTALLA PRINCIPAL**
+    
+    // Obtener fuentes habilitadas
     const { data: sources, error: sourcesError } = await supabase
       .from('user_news_sources')
-      .select('name, url')
+      .select('name, url, enabled')
       .eq('user_id', userId)
       .eq('enabled', true);
 
@@ -40,7 +29,26 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
     const enabledSources = sources || [];
     console.log(`📰 Fuentes habilitadas: ${enabledSources.map(s => s.name).join(', ')}`);
 
-    // **PASO 3: OBTENER CONFIGURACIÓN DE BÚSQUEDA**
+    if (enabledSources.length === 0) {
+      console.log('⚠️ No hay fuentes habilitadas');
+      return { success: false, error: 'No hay fuentes habilitadas' };
+    }
+
+    // Obtener palabras clave
+    const { data: keywords, error: keywordsError } = await supabase
+      .from('user_keywords')
+      .select('keyword')
+      .eq('user_id', userId);
+
+    if (keywordsError) {
+      console.error('❌ Error obteniendo palabras clave:', keywordsError);
+      return { success: false, error: `Error obteniendo palabras clave: ${keywordsError.message}` };
+    }
+
+    const userKeywords = keywords?.map(k => k.keyword) || [];
+    console.log(`📝 Palabras clave: ${userKeywords.join(', ')}`);
+
+    // Obtener configuración de búsqueda
     const { data: searchSettings, error: settingsError } = await supabase
       .from('user_search_settings')
       .select('*')
@@ -61,7 +69,7 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
 
     console.log(`⚙️ Configuración de búsqueda:`, settings);
 
-    // **PASO 4: OBTENER USUARIOS DE TWITTER**
+    // Obtener usuarios de Twitter
     const { data: twitterUsers, error: twitterError } = await supabase
       .from('user_twitter_users')
       .select('twitter_username')
@@ -70,40 +78,50 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
     const userTwitterUsers = twitterUsers?.map(t => t.twitter_username) || [];
     console.log(`🐦 Usuarios de Twitter: ${userTwitterUsers.join(', ')}`);
 
-    // **CORREGIDO: PRIMERO INTENTAR OBTENER NOTICIAS DE LA BASE DE DATOS**
-    console.log('📰 Intentando obtener noticias de logs anteriores...');
+    // **PASO 2: BUSCAR RESULTADOS PREVIOS EN RADAR_LOGS EXACTAMENTE COMO LA PANTALLA PRINCIPAL**
+    console.log('🔍 Buscando resultados previos en radar_logs...');
     
     const { data: radarLogs } = await supabase
       .from('radar_logs')
-      .select('results')
+      .select('*')
       .eq('user_id', userId)
       .eq('status', 'completed')
       .not('results', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1);
 
-    if (radarLogs && radarLogs.length > 0 && radarLogs[0].results) {
-      const results = radarLogs[0].results as any;
-      if (results.news && Array.isArray(results.news) && results.news.length > 0) {
-        console.log(`✅ Noticias encontradas en cache: ${results.news.length}`);
-        return { success: true, news: results.news };
+    if (radarLogs && radarLogs.length > 0) {
+      const latestLog = radarLogs[0];
+      const results = latestLog.results as any;
+      
+      if (results && results.news && Array.isArray(results.news) && results.news.length > 0) {
+        // Verificar si el log es reciente (menos de 1 hora)
+        const logTime = new Date(latestLog.created_at).getTime();
+        const now = new Date().getTime();
+        const hoursDiff = (now - logTime) / (1000 * 60 * 60);
+        
+        if (hoursDiff < 1) {
+          console.log(`✅ Usando resultados del cache (${hoursDiff.toFixed(1)}h de antigüedad): ${results.news.length} noticias`);
+          return { success: true, news: results.news };
+        } else {
+          console.log(`⏰ Cache antiguo (${hoursDiff.toFixed(1)}h), ejecutando nueva búsqueda`);
+        }
       }
     }
 
-    // **PASO 5: SI NO HAY CACHE, EJECUTAR BÚSQUEDA EN SERVIDOR PYTHON**
-    console.log('🐍 No hay cache, ejecutando búsqueda en servidor Python...');
+    // **PASO 3: EJECUTAR NUEVA BÚSQUEDA USANDO EL SISTEMA PYTHON**
+    console.log('🐍 Ejecutando nueva búsqueda con servidor Python...');
     
     const logId = crypto.randomUUID();
     const startTime = Date.now();
     
-    console.log(`📊 Iniciando log de búsqueda: ${logId}`);
-    
+    // Crear log inicial
     const { error: logError } = await supabase
       .from('radar_logs')
       .insert({
         id: logId,
         user_id: userId,
-        operation: 'automated_search',
+        operation: 'automated_news_search',
         status: 'running',
         parameters: {
           keywords: userKeywords,
@@ -116,41 +134,48 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
       });
 
     if (logError) {
-      console.error('Error creando log inicial:', logError);
+      console.error('⚠️ Error creando log inicial:', logError);
     }
 
-    // **MÚLTIPLES INTENTOS DE CONEXIÓN CON PYTHON**
+    // **CORREGIDO: USAR EXACTAMENTE LA MISMA LÓGICA QUE LA PANTALLA PRINCIPAL**
+    const pythonPayload = {
+      keywords: userKeywords,
+      sources: enabledSources.map(s => s.url),
+      includeTwitter: settings.include_twitter,
+      maxResults: settings.max_results,
+      validateLinks: settings.validate_links,
+      currentDateOnly: settings.current_date_only,
+      deepScrape: settings.deep_scrape,
+      twitterUsers: userTwitterUsers,
+      executeScript: true,
+      forceExecution: true
+    };
+
+    console.log('📤 Payload para Python:', JSON.stringify(pythonPayload, null, 2));
+
+    // Intentar múltiples URLs como hace la pantalla principal
     const pythonUrls = [
       "http://localhost:8000/api/news/refresh",
       "http://127.0.0.1:8000/api/news/refresh",
       "http://host.docker.internal:8000/api/news/refresh"
     ];
 
+    let searchSuccess = false;
+    let finalResult: any = null;
+
     for (const pythonUrl of pythonUrls) {
       try {
         console.log(`🔗 Intentando conectar con: ${pythonUrl}`);
         
-        const pythonPayload = {
-          keywords: userKeywords,
-          sources: enabledSources.map(s => s.url),
-          includeTwitter: settings.include_twitter,
-          maxResults: settings.max_results,
-          validateLinks: settings.validate_links,
-          currentDateOnly: settings.current_date_only,
-          deepScrape: settings.deep_scrape,
-          twitterUsers: userTwitterUsers,
-          executeScript: true,
-          forceExecution: true
-        };
-
-        console.log('📤 Payload para búsqueda Python:', pythonPayload);
-
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
 
         const response = await fetch(pythonUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
           body: JSON.stringify(pythonPayload),
           signal: controller.signal
         });
@@ -163,7 +188,7 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
           console.log(`✅ Búsqueda Python exitosa en ${executionTime}ms`);
           console.log(`📰 Noticias encontradas: ${result.news?.length || 0}`);
           
-          // **ACTUALIZAR LOG CON RESULTADOS EXITOSOS**
+          // Actualizar log con resultados exitosos
           await supabase
             .from('radar_logs')
             .update({
@@ -173,36 +198,42 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
             })
             .eq('id', logId);
           
-          return { 
-            success: true, 
-            news: result.news || [],
-          };
+          finalResult = result;
+          searchSuccess = true;
+          break; // Salir del loop si fue exitoso
+          
         } else {
           const errorText = await response.text();
-          console.error(`❌ Error en ${pythonUrl}: ${response.status} - ${errorText}`);
+          console.error(`❌ Error HTTP ${response.status} en ${pythonUrl}: ${errorText}`);
           continue; // Probar siguiente URL
         }
         
       } catch (fetchError: any) {
-        console.error(`⚠️ Error conectando con ${pythonUrl}:`, fetchError);
+        console.error(`⚠️ Error de conexión con ${pythonUrl}:`, fetchError);
         continue; // Probar siguiente URL
       }
     }
 
-    // **SI TODOS LOS INTENTOS FALLARON**
-    const executionTime = Date.now() - startTime;
-    console.error("❌ Todos los intentos de conexión Python fallaron");
-    
-    await supabase
-      .from('radar_logs')
-      .update({
-        status: 'failed',
-        error: 'No se pudo conectar con servidor Python',
-        execution_time_ms: executionTime
-      })
-      .eq('id', logId);
-    
-    return { success: false, error: 'Servidor Python no disponible y sin cache' };
+    if (!searchSuccess) {
+      const executionTime = Date.now() - startTime;
+      console.error("❌ Todos los intentos de conexión Python fallaron");
+      
+      await supabase
+        .from('radar_logs')
+        .update({
+          status: 'failed',
+          error: 'No se pudo conectar con servidor Python',
+          execution_time_ms: executionTime
+        })
+        .eq('id', logId);
+      
+      return { success: false, error: 'Servidor Python no disponible' };
+    }
+
+    return { 
+      success: true, 
+      news: finalResult?.news || []
+    };
     
   } catch (error: any) {
     console.error('💥 Error general en búsqueda de noticias:', error);
@@ -216,7 +247,6 @@ async function executeNewsSearch(userId: string, supabase: any): Promise<{ succe
 // Función para formatear noticias para WhatsApp
 function formatNewsForWhatsApp(news: any[]): string {
   if (news.length === 0) {
-    // **CORREGIDO: MENSAJE MÁS CLARO CUANDO NO HAY NOTICIAS**
     let message = "📰 *MONITOREO AUTOMÁTICO - NEWS RADAR*\n\n";
     message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
     message += "⚠️ No se encontraron noticias nuevas en esta búsqueda automática.\n\n";
@@ -229,7 +259,7 @@ function formatNewsForWhatsApp(news: any[]): string {
     return message;
   }
   
-  let message = "📰 *NOTICIAS ACTUALIZADAS AUTOMÁTICAMENTE*\n";
+  let message = "📰 *NOTICIAS ENCONTRADAS AUTOMÁTICAMENTE*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
   
   news.slice(0, 8).forEach((item, index) => {
@@ -307,7 +337,7 @@ function formatNewsForEmail(news: any[]): string {
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Noticias Actualizadas Automáticamente - News Radar</title>
+        <title>Noticias Encontradas Automáticamente - News Radar</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
           .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; border-radius: 8px; overflow: hidden; }
@@ -325,7 +355,7 @@ function formatNewsForEmail(news: any[]): string {
       <body>
         <div class="container">
           <div class="header">
-            <h1>📰 Noticias Actualizadas Automáticamente</h1>
+            <h1>📰 Noticias Encontradas Automáticamente</h1>
             <p>${date}</p>
           </div>
           <div class="content">
@@ -365,7 +395,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('=== INICIANDO ENVÍO AUTOMÁTICO MEJORADO CON BÚSQUEDA PREVIA ===');
+  console.log('=== INICIANDO ENVÍO AUTOMÁTICO CORREGIDO CON BÚSQUEDA REAL ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
@@ -428,7 +458,7 @@ serve(async (req) => {
       });
     }
 
-    // Filtrar suscripciones que deben ejecutarse ahora (con tolerancia de 10 minutos)
+    // Filtrar suscripciones que deben ejecutarse ahora
     const subscriptionsToProcess = subscriptions.filter(subscription => {
       const phoneOrEmail = type === 'whatsapp' ? subscription.phone_number : subscription.email_address;
       
@@ -444,7 +474,7 @@ serve(async (req) => {
         return true;
       }
       
-      // Parsear hora programada con más tolerancia
+      // Parsear hora programada
       let scheduledHour: number;
       let scheduledMinute: number;
       
@@ -452,7 +482,6 @@ serve(async (req) => {
         if (subscription.scheduled_time.includes(':')) {
           [scheduledHour, scheduledMinute] = subscription.scheduled_time.split(':').map(Number);
         } else {
-          // Si es solo hora, asumir minuto 0
           scheduledHour = parseInt(subscription.scheduled_time);
           scheduledMinute = 0;
         }
@@ -516,28 +545,30 @@ serve(async (req) => {
     let successCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
-    let totalNewsUpdated = 0;
+    let totalNewsFound = 0;
 
-    // **CORREGIDO: AGRUPAR USUARIOS ÚNICOS PARA OPTIMIZAR BÚSQUEDAS**
+    // **CORREGIDO: AGRUPAR USUARIOS ÚNICOS Y EJECUTAR BÚSQUEDA COMO PANTALLA PRINCIPAL**
     const uniqueUserIds = [...new Set(subscriptionsToProcess.map(s => s.user_id))];
     const userNewsCache = new Map<string, any[]>();
 
     console.log(`👥 Usuarios únicos a procesar: ${uniqueUserIds.length}`);
 
-    // **EJECUTAR BÚSQUEDAS POR USUARIO (NO POR SUSCRIPCIÓN)**
+    // **EJECUTAR BÚSQUEDAS POR USUARIO USANDO LA MISMA LÓGICA QUE LA PANTALLA PRINCIPAL**
     for (const userId of uniqueUserIds) {
       console.log(`🔄 Ejecutando búsqueda para usuario: ${userId}`);
-      const newsSearchResult = await executeNewsSearch(userId, supabase);
+      const newsSearchResult = await executeNewsSearchLikeMainScreen(userId, supabase);
       
       if (newsSearchResult.success && newsSearchResult.news) {
         userNewsCache.set(userId, newsSearchResult.news);
-        totalNewsUpdated = Math.max(totalNewsUpdated, newsSearchResult.news.length);
-        console.log(`✅ Usuario ${userId}: ${newsSearchResult.news.length} noticias`);
+        totalNewsFound = Math.max(totalNewsFound, newsSearchResult.news.length);
+        console.log(`✅ Usuario ${userId}: ${newsSearchResult.news.length} noticias encontradas`);
       } else {
         userNewsCache.set(userId, []);
         console.log(`⚠️ Usuario ${userId}: Sin noticias - ${newsSearchResult.error}`);
       }
     }
+
+    console.log(`📰 RESUMEN DE BÚSQUEDAS: ${totalNewsFound} noticias máximas encontradas`);
 
     // Procesar cada suscripción usando el cache de noticias
     for (const subscription of subscriptionsToProcess) {
@@ -546,11 +577,11 @@ serve(async (req) => {
       try {
         console.log(`📤 Procesando envío para ${phoneOrEmail} (usuario: ${subscription.user_id})...`);
 
-        // **OBTENER NOTICIAS DEL CACHE**
+        // Obtener noticias del cache
         const freshNews = userNewsCache.get(subscription.user_id) || [];
         console.log(`📰 Noticias para ${phoneOrEmail}: ${freshNews.length}`);
 
-        // **PREPARAR Y ENVIAR MENSAJE**
+        // Preparar mensaje
         let messageContent = '';
         if (type === 'whatsapp') {
           messageContent = formatNewsForWhatsApp(freshNews);
@@ -561,6 +592,7 @@ serve(async (req) => {
         let sendResult = { success: false, error: 'Método no implementado' };
 
         if (type === 'whatsapp') {
+          // Envío WhatsApp
           const { data: whatsappConfigs, error: configError } = await supabase
             .from('user_whatsapp_configs')
             .select('*')
@@ -572,23 +604,18 @@ serve(async (req) => {
           }
 
           const instanceName = "SenadoN8N";
-          console.log(`📱 Instancia WhatsApp: ${instanceName}`);
-
           let cleanNumber = phoneOrEmail.replace(/\D/g, '');
           if (!cleanNumber.startsWith('54') && cleanNumber.length >= 10) {
             cleanNumber = '54' + cleanNumber;
           }
 
-          console.log(`📱 Número limpio: ${cleanNumber}`);
-          console.log(`🔗 URL API: ${whatsappConfigs.evolution_api_url}/message/sendText/${instanceName}`);
+          console.log(`📱 Enviando WhatsApp a ${cleanNumber} con ${freshNews.length} noticias`);
 
           try {
             const whatsappPayload = {
               number: cleanNumber,
               text: messageContent
             };
-
-            console.log(`📤 Enviando WhatsApp con ${freshNews.length} noticias`);
 
             const response = await fetch(`${whatsappConfigs.evolution_api_url.trim()}/message/sendText/${instanceName}`, {
               method: 'POST',
@@ -616,6 +643,7 @@ serve(async (req) => {
           }
 
         } else {
+          // Envío Email
           const { data: emailConfigs, error: configError } = await supabase
             .from('user_email_configs')
             .select('*')
@@ -627,11 +655,11 @@ serve(async (req) => {
           }
 
           try {
-            console.log(`📧 Enviando email con ${freshNews.length} noticias`);
+            console.log(`📧 Enviando email a ${phoneOrEmail} con ${freshNews.length} noticias`);
             
             const emailPayload = {
               to: phoneOrEmail,
-              subject: freshNews.length === 0 ? "Monitoreo Automático - News Radar" : "Noticias Actualizadas Automáticamente - News Radar",
+              subject: freshNews.length === 0 ? "Monitoreo Automático - News Radar" : "Noticias Encontradas Automáticamente - News Radar",
               html: messageContent,
               smtpConfig: {
                 host: emailConfigs.smtp_host,
@@ -676,7 +704,7 @@ serve(async (req) => {
           errors.push(`${phoneOrEmail}: ${sendResult.error}`);
         }
 
-        // Crear log automático mejorado
+        // Crear log automático
         const logData = {
           user_id: subscription.user_id,
           subscription_id: subscription.id,
@@ -717,7 +745,7 @@ serve(async (req) => {
     console.log(`📊 RESUMEN FINAL CORREGIDO:`);
     console.log(`  👥 Usuarios procesados: ${uniqueUserIds.length}`);
     console.log(`  🔍 Búsquedas ejecutadas: ${uniqueUserIds.length}`);
-    console.log(`  📰 Noticias máximas encontradas: ${totalNewsUpdated}`);
+    console.log(`  📰 Noticias máximas encontradas: ${totalNewsFound}`);
     console.log(`  📤 Suscripciones procesadas: ${subscriptionsToProcess.length}`);
     console.log(`  ✅ Envíos exitosos: ${successCount}`);
     console.log(`  ❌ Errores: ${errorCount}`);
@@ -730,7 +758,7 @@ serve(async (req) => {
         errors: errorCount,
         total: subscriptionsToProcess.length,
         errorDetails: errors,
-        newsUpdated: totalNewsUpdated,
+        newsFound: totalNewsFound,
         searchExecuted: true,
         usersProcessed: uniqueUserIds.length,
         timestamp: new Date().toISOString()
