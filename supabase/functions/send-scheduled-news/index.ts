@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -7,14 +8,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// CORREGIDO: Función para ejecutar búsqueda usando el MISMO proceso que la pantalla principal
-async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): Promise<{ success: boolean; news?: any[]; error?: string }> {
+// CORREGIDO: Función que usa EXACTAMENTE la misma lógica que NewsService.getNews()
+async function executeRealNewsSearch(userId: string, supabase: any): Promise<{ success: boolean; news?: any[]; error?: string }> {
   try {
-    console.log(`🔍 EJECUTANDO BÚSQUEDA COMO PANTALLA PRINCIPAL PARA USUARIO: ${userId}`);
+    console.log(`🔍 EJECUTANDO BÚSQUEDA REAL PARA USUARIO: ${userId}`);
     
-    // **PASO 1: OBTENER CONFIGURACIÓN EXACTA COMO LA PANTALLA PRINCIPAL**
+    // **PASO 1: OBTENER CONFIGURACIÓN IGUAL QUE NewsService**
     
-    // Obtener fuentes habilitadas
+    // Obtener fuentes habilitadas (igual que NewsService.getSources())
     const { data: sources, error: sourcesError } = await supabase
       .from('user_news_sources')
       .select('name, url, enabled')
@@ -27,14 +28,14 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
     }
 
     const enabledSources = sources || [];
-    console.log(`📰 Fuentes habilitadas: ${enabledSources.map(s => s.name).join(', ')}`);
+    console.log(`📰 Fuentes habilitadas encontradas: ${enabledSources.length}`);
 
     if (enabledSources.length === 0) {
-      console.log('⚠️ No hay fuentes habilitadas');
+      console.log('⚠️ No hay fuentes habilitadas para este usuario');
       return { success: false, error: 'No hay fuentes habilitadas' };
     }
 
-    // Obtener palabras clave
+    // Obtener palabras clave (igual que NewsService.getSearchSettings())
     const { data: keywords, error: keywordsError } = await supabase
       .from('user_keywords')
       .select('keyword')
@@ -46,9 +47,9 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
     }
 
     const userKeywords = keywords?.map(k => k.keyword) || [];
-    console.log(`📝 Palabras clave: ${userKeywords.join(', ')}`);
+    console.log(`📝 Palabras clave configuradas: ${userKeywords.length} (${userKeywords.join(', ')})`);
 
-    // Obtener configuración de búsqueda
+    // Obtener configuración de búsqueda (igual que NewsService.getSearchSettings())
     const { data: searchSettings, error: settingsError } = await supabase
       .from('user_search_settings')
       .select('*')
@@ -56,7 +57,7 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
       .single();
 
     if (settingsError) {
-      console.error('❌ Error obteniendo configuración:', settingsError);
+      console.error('❌ Error obteniendo configuración de búsqueda:', settingsError);
     }
 
     const settings = searchSettings || {
@@ -69,19 +70,19 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
 
     console.log(`⚙️ Configuración de búsqueda:`, settings);
 
-    // Obtener usuarios de Twitter
+    // Obtener usuarios de Twitter (igual que NewsService.getTwitterUsers())
     const { data: twitterUsers, error: twitterError } = await supabase
       .from('user_twitter_users')
       .select('twitter_username')
       .eq('user_id', userId);
 
     const userTwitterUsers = twitterUsers?.map(t => t.twitter_username) || [];
-    console.log(`🐦 Usuarios de Twitter: ${userTwitterUsers.join(', ')}`);
+    console.log(`🐦 Usuarios de Twitter configurados: ${userTwitterUsers.length}`);
 
-    // **PASO 2: BUSCAR RESULTADOS PREVIOS EN RADAR_LOGS EXACTAMENTE COMO LA PANTALLA PRINCIPAL**
-    console.log('🔍 Buscando resultados previos en radar_logs...');
+    // **PASO 2: VERIFICAR CACHÉ RECIENTE EN RADAR_LOGS**
+    console.log('🔍 Verificando caché de búsquedas recientes...');
     
-    const { data: radarLogs } = await supabase
+    const { data: recentLogs } = await supabase
       .from('radar_logs')
       .select('*')
       .eq('user_id', userId)
@@ -90,32 +91,27 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
       .order('created_at', { ascending: false })
       .limit(1);
 
-    if (radarLogs && radarLogs.length > 0) {
-      const latestLog = radarLogs[0];
-      const results = latestLog.results as any;
+    if (recentLogs && recentLogs.length > 0) {
+      const latestLog = recentLogs[0];
+      const logTime = new Date(latestLog.created_at).getTime();
+      const now = new Date().getTime();
+      const minutesDiff = (now - logTime) / (1000 * 60);
       
-      if (results && results.news && Array.isArray(results.news) && results.news.length > 0) {
-        // Verificar si el log es reciente (menos de 1 hora)
-        const logTime = new Date(latestLog.created_at).getTime();
-        const now = new Date().getTime();
-        const hoursDiff = (now - logTime) / (1000 * 60 * 60);
-        
-        if (hoursDiff < 1) {
-          console.log(`✅ Usando resultados del cache (${hoursDiff.toFixed(1)}h de antigüedad): ${results.news.length} noticias`);
-          return { success: true, news: results.news };
-        } else {
-          console.log(`⏰ Cache antiguo (${hoursDiff.toFixed(1)}h), ejecutando nueva búsqueda`);
-        }
+      if (minutesDiff < 30 && latestLog.results && latestLog.results.news) {
+        console.log(`✅ Usando caché reciente (${minutesDiff.toFixed(1)} min): ${latestLog.results.news.length} noticias`);
+        return { success: true, news: latestLog.results.news };
+      } else {
+        console.log(`⏰ Caché antiguo (${minutesDiff.toFixed(1)} min), ejecutando nueva búsqueda`);
       }
     }
 
-    // **PASO 3: EJECUTAR NUEVA BÚSQUEDA USANDO EL SISTEMA PYTHON**
-    console.log('🐍 Ejecutando nueva búsqueda con servidor Python...');
+    // **PASO 3: EJECUTAR NUEVA BÚSQUEDA PYTHON (IGUAL QUE LA PANTALLA)**
+    console.log('🐍 Ejecutando nueva búsqueda con sistema Python...');
     
     const logId = crypto.randomUUID();
     const startTime = Date.now();
     
-    // Crear log inicial
+    // Crear log de radar EXACTAMENTE igual que RadarLoggingService
     const { error: logError } = await supabase
       .from('radar_logs')
       .insert({
@@ -134,10 +130,10 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
       });
 
     if (logError) {
-      console.error('⚠️ Error creando log inicial:', logError);
+      console.error('⚠️ Error creando radar log:', logError);
     }
 
-    // **CORREGIDO: USAR EXACTAMENTE LA MISMA LÓGICA QUE LA PANTALLA PRINCIPAL**
+    // **USAR EXACTAMENTE EL MISMO PAYLOAD QUE PythonNewsAdapter**
     const pythonPayload = {
       keywords: userKeywords,
       sources: enabledSources.map(s => s.url),
@@ -151,9 +147,9 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
       forceExecution: true
     };
 
-    console.log('📤 Payload para Python:', JSON.stringify(pythonPayload, null, 2));
+    console.log('📤 Payload Python (igual que PythonNewsAdapter):', JSON.stringify(pythonPayload, null, 2));
 
-    // Intentar múltiples URLs como hace la pantalla principal
+    // Intentar múltiples URLs Python (igual que PythonNewsAdapter)
     const pythonUrls = [
       "http://localhost:8000/api/news/refresh",
       "http://127.0.0.1:8000/api/news/refresh",
@@ -165,10 +161,10 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
 
     for (const pythonUrl of pythonUrls) {
       try {
-        console.log(`🔗 Intentando conectar con: ${pythonUrl}`);
+        console.log(`🔗 Probando conexión Python: ${pythonUrl}`);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 segundos timeout
 
         const response = await fetch(pythonUrl, {
           method: "POST",
@@ -185,10 +181,10 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
         
         if (response.ok) {
           const result = await response.json();
-          console.log(`✅ Búsqueda Python exitosa en ${executionTime}ms`);
+          console.log(`✅ Búsqueda Python EXITOSA en ${executionTime}ms`);
           console.log(`📰 Noticias encontradas: ${result.news?.length || 0}`);
           
-          // Actualizar log con resultados exitosos
+          // Actualizar radar log con resultados
           await supabase
             .from('radar_logs')
             .update({
@@ -200,23 +196,23 @@ async function executeNewsSearchLikeMainScreen(userId: string, supabase: any): P
           
           finalResult = result;
           searchSuccess = true;
-          break; // Salir del loop si fue exitoso
+          break;
           
         } else {
           const errorText = await response.text();
           console.error(`❌ Error HTTP ${response.status} en ${pythonUrl}: ${errorText}`);
-          continue; // Probar siguiente URL
+          continue;
         }
         
       } catch (fetchError: any) {
-        console.error(`⚠️ Error de conexión con ${pythonUrl}:`, fetchError);
-        continue; // Probar siguiente URL
+        console.error(`⚠️ Error de conexión con ${pythonUrl}:`, fetchError.message);
+        continue;
       }
     }
 
     if (!searchSuccess) {
       const executionTime = Date.now() - startTime;
-      console.error("❌ Todos los intentos de conexión Python fallaron");
+      console.error("❌ TODOS los intentos de búsqueda Python fallaron");
       
       await supabase
         .from('radar_logs')
@@ -395,12 +391,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('=== INICIANDO ENVÍO AUTOMÁTICO CORREGIDO CON BÚSQUEDA REAL ===');
+  console.log('=== INICIANDO ENVÍO AUTOMÁTICO CORREGIDO ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
     const { type = 'whatsapp', scheduled = true, force = false } = await req.json().catch(() => ({}));
-    console.log('📋 Parámetros:', { type, scheduled, force });
+    console.log('📋 Parámetros recibidos:', { type, scheduled, force });
 
     // Configurar Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -547,16 +543,16 @@ serve(async (req) => {
     const errors: string[] = [];
     let totalNewsFound = 0;
 
-    // **CORREGIDO: AGRUPAR USUARIOS ÚNICOS Y EJECUTAR BÚSQUEDA COMO PANTALLA PRINCIPAL**
+    // **AGRUPAR USUARIOS ÚNICOS Y EJECUTAR BÚSQUEDA REAL**
     const uniqueUserIds = [...new Set(subscriptionsToProcess.map(s => s.user_id))];
     const userNewsCache = new Map<string, any[]>();
 
     console.log(`👥 Usuarios únicos a procesar: ${uniqueUserIds.length}`);
 
-    // **EJECUTAR BÚSQUEDAS POR USUARIO USANDO LA MISMA LÓGICA QUE LA PANTALLA PRINCIPAL**
+    // **EJECUTAR BÚSQUEDAS REALES POR USUARIO**
     for (const userId of uniqueUserIds) {
-      console.log(`🔄 Ejecutando búsqueda para usuario: ${userId}`);
-      const newsSearchResult = await executeNewsSearchLikeMainScreen(userId, supabase);
+      console.log(`🔄 Ejecutando búsqueda REAL para usuario: ${userId}`);
+      const newsSearchResult = await executeRealNewsSearch(userId, supabase);
       
       if (newsSearchResult.success && newsSearchResult.news) {
         userNewsCache.set(userId, newsSearchResult.news);
@@ -742,7 +738,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`📊 RESUMEN FINAL CORREGIDO:`);
+    console.log(`📊 RESUMEN FINAL:`);
     console.log(`  👥 Usuarios procesados: ${uniqueUserIds.length}`);
     console.log(`  🔍 Búsquedas ejecutadas: ${uniqueUserIds.length}`);
     console.log(`  📰 Noticias máximas encontradas: ${totalNewsFound}`);
@@ -782,3 +778,4 @@ serve(async (req) => {
     });
   }
 });
+
