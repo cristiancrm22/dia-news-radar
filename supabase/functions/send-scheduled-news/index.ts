@@ -7,10 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// CORREGIDO: Función para obtener noticias usando parámetros del usuario
-async function getNewsWithUserParameters(userId: string, supabase: any): Promise<{ success: boolean; news?: any[]; error?: string }> {
+// MEJORADO: Función para ejecutar búsqueda de noticias usando los mismos parámetros que la pantalla principal
+async function executeNewsSearch(userId: string, supabase: any): Promise<{ success: boolean; news?: any[]; error?: string }> {
   try {
-    console.log(`🔍 OBTENIENDO NOTICIAS CON PARÁMETROS DEL USUARIO: ${userId}`);
+    console.log(`🔍 EJECUTANDO BÚSQUEDA DE NOTICIAS PARA USUARIO: ${userId}`);
     
     // **PASO 1: OBTENER PALABRAS CLAVE DEL USUARIO**
     const { data: keywords, error: keywordsError } = await supabase
@@ -71,9 +71,36 @@ async function getNewsWithUserParameters(userId: string, supabase: any): Promise
     const userTwitterUsers = twitterUsers?.map(t => t.twitter_username) || [];
     console.log(`🐦 Usuarios de Twitter: ${userTwitterUsers.join(', ')}`);
 
-    // **PASO 5: INTENTAR OBTENER NOTICIAS DESDE EL SERVIDOR PYTHON LOCAL**
+    // **PASO 5: CREAR LOG DE INICIO DE BÚSQUEDA**
+    const logId = crypto.randomUUID();
+    const startTime = Date.now();
+    
+    console.log(`📊 Iniciando log de búsqueda: ${logId}`);
+    
+    const { error: logError } = await supabase
+      .from('radar_logs')
+      .insert({
+        id: logId,
+        user_id: userId,
+        operation: 'automated_search',
+        status: 'running',
+        parameters: {
+          keywords: userKeywords,
+          sources: enabledSources,
+          settings: settings,
+          twitterUsers: userTwitterUsers,
+          executedBy: 'scheduled_function'
+        },
+        timestamp: new Date().toISOString()
+      });
+
+    if (logError) {
+      console.error('Error creando log inicial:', logError);
+    }
+
+    // **PASO 6: EJECUTAR BÚSQUEDA DE NOTICIAS EN SERVIDOR PYTHON (IGUAL QUE EL BOTÓN ACTUALIZAR)**
     try {
-      console.log('🐍 Intentando obtener noticias desde servidor Python...');
+      console.log('🐍 Ejecutando búsqueda de noticias en servidor Python...');
       
       const pythonPayload = {
         keywords: userKeywords,
@@ -88,7 +115,7 @@ async function getNewsWithUserParameters(userId: string, supabase: any): Promise
         forceExecution: true
       };
 
-      console.log('📤 Payload para Python:', pythonPayload);
+      console.log('📤 Payload para búsqueda Python:', pythonPayload);
 
       const response = await fetch("http://localhost:8000/api/news/refresh", {
         method: "POST",
@@ -96,21 +123,61 @@ async function getNewsWithUserParameters(userId: string, supabase: any): Promise
         body: JSON.stringify(pythonPayload)
       });
       
+      const executionTime = Date.now() - startTime;
+      
       if (response.ok) {
         const result = await response.json();
-        if (result.news && result.news.length > 0) {
-          console.log(`✅ Noticias obtenidas desde Python: ${result.news.length}`);
-          return { success: true, news: result.news };
-        }
+        console.log(`✅ Búsqueda completada exitosamente en ${executionTime}ms`);
+        console.log(`📰 Noticias encontradas: ${result.news?.length || 0}`);
+        
+        // **ACTUALIZAR LOG CON RESULTADOS EXITOSOS**
+        await supabase
+          .from('radar_logs')
+          .update({
+            status: 'completed',
+            results: result,
+            execution_time_ms: executionTime
+          })
+          .eq('id', logId);
+        
+        return { 
+          success: true, 
+          news: result.news || [],
+        };
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ Error en búsqueda Python: ${response.status} - ${errorText}`);
+        
+        // **ACTUALIZAR LOG CON ERROR**
+        await supabase
+          .from('radar_logs')
+          .update({
+            status: 'failed',
+            error: `HTTP ${response.status}: ${errorText}`,
+            execution_time_ms: executionTime
+          })
+          .eq('id', logId);
+        
+        return { success: false, error: `Error en servidor Python: ${response.status}` };
       }
       
-      console.log(`⚠️ Servidor Python no disponible o sin noticias`);
-    } catch (pythonError) {
-      console.log("⚠️ Error conectando con servidor Python:", pythonError);
-    }
-
-    // **PASO 6: FALLBACK A RADAR_LOGS PARA OBTENER NOTICIAS RECIENTES**
-    try {
+    } catch (pythonError: any) {
+      const executionTime = Date.now() - startTime;
+      console.error("⚠️ Error conectando con servidor Python:", pythonError);
+      
+      // **ACTUALIZAR LOG CON ERROR DE CONEXIÓN**
+      await supabase
+        .from('radar_logs')
+        .update({
+          status: 'failed',
+          error: `Error de conexión: ${pythonError.message}`,
+          execution_time_ms: executionTime
+        })
+        .eq('id', logId);
+      
+      // **FALLBACK: OBTENER NOTICIAS DE CACHE/LOGS ANTERIORES**
+      console.log("📰 Intentando obtener noticias desde cache...");
+      
       const { data: radarLogs } = await supabase
         .from('radar_logs')
         .select('results')
@@ -122,42 +189,16 @@ async function getNewsWithUserParameters(userId: string, supabase: any): Promise
       if (radarLogs && radarLogs.length > 0 && radarLogs[0].results) {
         const results = radarLogs[0].results as any;
         if (results.news && Array.isArray(results.news) && results.news.length > 0) {
-          console.log(`📰 Noticias desde radar_logs: ${results.news.length}`);
-          
-          // Filtrar noticias por palabras clave del usuario
-          let filteredNews = results.news;
-          if (userKeywords.length > 0) {
-            filteredNews = results.news.filter((item: any) => {
-              const text = `${item.title} ${item.summary || item.description || ''}`.toLowerCase();
-              return userKeywords.some(keyword => 
-                text.includes(keyword.toLowerCase())
-              );
-            });
-            console.log(`🔍 Noticias filtradas por palabras clave: ${filteredNews.length}`);
-          }
-          
-          return { success: true, news: filteredNews };
+          console.log(`📰 Noticias desde cache: ${results.news.length}`);
+          return { success: true, news: results.news };
         }
       }
-    } catch (supabaseError) {
-      console.log("⚠️ Error obteniendo noticias desde radar_logs:", supabaseError);
+      
+      return { success: false, error: `Error de conexión y sin cache disponible: ${pythonError.message}` };
     }
-
-    // **PASO 7: SI NO HAY NOTICIAS, GENERAR MENSAJE PERSONALIZADO**
-    console.log("📰 No se encontraron noticias - generando mensaje personalizado");
-    return {
-      success: true,
-      news: [{
-        title: `Monitoreo activo para: ${userKeywords.join(', ')}`,
-        summary: `Se están monitoreando ${enabledSources.length} fuentes de noticias con ${userKeywords.length} palabras clave configuradas. No se encontraron noticias nuevas en este momento.`,
-        sourceUrl: "#",
-        sourceName: "News Radar",
-        date: new Date().toISOString()
-      }]
-    };
     
   } catch (error: any) {
-    console.error('💥 Error obteniendo noticias con parámetros del usuario:', error);
+    console.error('💥 Error general en búsqueda de noticias:', error);
     return {
       success: false,
       error: error.message
@@ -167,11 +208,11 @@ async function getNewsWithUserParameters(userId: string, supabase: any): Promise
 
 // Función para formatear noticias para WhatsApp
 function formatNewsForWhatsApp(news: any[]): string {
-  let message = "📰 *RESUMEN DE NOTICIAS MONITOREADAS*\n";
+  let message = "📰 *NOTICIAS ACTUALIZADAS AUTOMÁTICAMENTE*\n";
   message += `📅 ${new Date().toLocaleDateString('es-ES')}\n\n`;
   
   if (news.length === 0) {
-    message = "📰 *RESUMEN DE NOTICIAS MONITOREADAS*\n\n⚠️ No se encontraron noticias nuevas con los parámetros configurados.\n\nSe continuará monitoreando las fuentes configuradas.\n\n🤖 News Radar";
+    message = "📰 *MONITOREO AUTOMÁTICO*\n\n⚠️ No se encontraron noticias nuevas en esta búsqueda automática.\n\nSe continuará monitoreando las fuentes configuradas.\n\n🤖 News Radar";
     return message;
   }
   
@@ -187,7 +228,7 @@ function formatNewsForWhatsApp(news: any[]): string {
   });
   
   message += "━━━━━━━━━━━━━━━━━━━━\n";
-  message += `🤖 News Radar (${news.length} noticias encontradas)`;
+  message += `🤖 News Radar - Envío Automático (${news.length} noticias)`;
   
   return message;
 }
@@ -207,7 +248,7 @@ function formatNewsForEmail(news: any[]): string {
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Sin noticias nuevas - News Radar</title>
+          <title>Monitoreo Automático - News Radar</title>
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
             .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; border-radius: 8px; overflow: hidden; }
@@ -220,11 +261,11 @@ function formatNewsForEmail(news: any[]): string {
           <div class="container">
             <div class="header">
               <h1>📰 News Radar</h1>
-              <p>${date}</p>
+              <p>Monitoreo Automático - ${date}</p>
             </div>
             <div class="content">
               <h2>⚠️ Sin noticias nuevas</h2>
-              <p>No se encontraron noticias nuevas con los parámetros de monitoreo configurados.</p>
+              <p>No se encontraron noticias nuevas en esta búsqueda automática con los parámetros de monitoreo configurados.</p>
               <p>Continuaremos monitoreando las fuentes y palabras clave configuradas.</p>
             </div>
             <div class="footer">
@@ -241,7 +282,7 @@ function formatNewsForEmail(news: any[]): string {
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Noticias Monitoreadas - News Radar</title>
+        <title>Noticias Actualizadas Automáticamente - News Radar</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
           .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; border-radius: 8px; overflow: hidden; }
@@ -259,11 +300,11 @@ function formatNewsForEmail(news: any[]): string {
       <body>
         <div class="container">
           <div class="header">
-            <h1>📰 Noticias Monitoreadas</h1>
+            <h1>📰 Noticias Actualizadas Automáticamente</h1>
             <p>${date}</p>
           </div>
           <div class="content">
-            <p>Noticias encontradas con tus parámetros de monitoreo:</p>
+            <p>Noticias encontradas con búsqueda automática usando tus parámetros de monitoreo:</p>
   `;
 
   news.slice(0, 8).forEach((item, index) => {
@@ -299,7 +340,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('=== INICIANDO ENVÍO AUTOMÁTICO CORREGIDO CON PARÁMETROS DE USUARIO ===');
+  console.log('=== INICIANDO ENVÍO AUTOMÁTICO MEJORADO CON BÚSQUEDA PREVIA ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
@@ -362,7 +403,7 @@ serve(async (req) => {
       });
     }
 
-    // Filtrar suscripciones que deben ejecutarse ahora
+    // Filtrar suscripciones que deben ejecutarse ahora (con tolerancia de 10 minutos)
     const subscriptionsToProcess = subscriptions.filter(subscription => {
       const phoneOrEmail = type === 'whatsapp' ? subscription.phone_number : subscription.email_address;
       
@@ -378,11 +419,34 @@ serve(async (req) => {
         return true;
       }
       
-      const [scheduledHour, scheduledMinute] = subscription.scheduled_time.split(':').map(Number);
-      const isCorrectTime = currentHour === scheduledHour && currentMinute === scheduledMinute;
+      // Parsear hora programada con más tolerancia
+      let scheduledHour: number;
+      let scheduledMinute: number;
       
-      if (!isCorrectTime) {
-        console.log(`  ❌ Hora incorrecta (actual: ${currentHour}:${currentMinute}, programada: ${scheduledHour}:${scheduledMinute})`);
+      try {
+        if (subscription.scheduled_time.includes(':')) {
+          [scheduledHour, scheduledMinute] = subscription.scheduled_time.split(':').map(Number);
+        } else {
+          // Si es solo hora, asumir minuto 0
+          scheduledHour = parseInt(subscription.scheduled_time);
+          scheduledMinute = 0;
+        }
+      } catch (parseError) {
+        console.log(`  ❌ Error parseando hora: ${subscription.scheduled_time}`);
+        return false;
+      }
+      
+      // Verificar si está en el rango de tiempo (tolerancia de 10 minutos)
+      const scheduledTimeMinutes = scheduledHour * 60 + scheduledMinute;
+      const currentTimeMinutes = currentHour * 60 + currentMinute;
+      const timeDifference = Math.abs(currentTimeMinutes - scheduledTimeMinutes);
+      
+      console.log(`  📅 Hora programada: ${scheduledHour}:${scheduledMinute.toString().padStart(2, '0')}`);
+      console.log(`  🕐 Hora actual: ${currentHour}:${currentMinute.toString().padStart(2, '0')}`);
+      console.log(`  ⏱️ Diferencia: ${timeDifference} minutos`);
+      
+      if (timeDifference > 10) {
+        console.log(`  ❌ Fuera del rango de tiempo (tolerancia: 10 min)`);
         return false;
       }
       
@@ -427,32 +491,36 @@ serve(async (req) => {
     let successCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
+    let totalNewsUpdated = 0;
 
-    // Procesar cada suscripción individualmente con sus parámetros
+    // Procesar cada suscripción individualmente: PRIMERO BUSCAR NOTICIAS, LUEGO ENVIAR
     for (const subscription of subscriptionsToProcess) {
       const phoneOrEmail = type === 'whatsapp' ? subscription.phone_number : subscription.email_address;
       
       try {
-        console.log(`📤 Procesando envío a ${phoneOrEmail} para usuario ${subscription.user_id}...`);
+        console.log(`📤 Procesando envío automático para ${phoneOrEmail} (usuario: ${subscription.user_id})...`);
 
-        // **OBTENER NOTICIAS CON PARÁMETROS ESPECÍFICOS DEL USUARIO**
-        console.log('📰 OBTENIENDO NOTICIAS CON PARÁMETROS DEL USUARIO...');
-        const newsResult = await getNewsWithUserParameters(subscription.user_id, supabase);
+        // **PASO 1: EJECUTAR BÚSQUEDA DE NOTICIAS (IGUAL QUE BOTÓN ACTUALIZAR)**
+        console.log('🔄 PASO 1: Ejecutando búsqueda de noticias...');
+        const newsSearchResult = await executeNewsSearch(subscription.user_id, supabase);
         
-        let availableNews: any[] = [];
-        if (newsResult.success && newsResult.news) {
-          availableNews = newsResult.news;
-          console.log(`✅ Noticias obtenidas para ${phoneOrEmail}: ${availableNews.length}`);
+        let freshNews: any[] = [];
+        if (newsSearchResult.success && newsSearchResult.news) {
+          freshNews = newsSearchResult.news;
+          totalNewsUpdated = Math.max(totalNewsUpdated, freshNews.length);
+          console.log(`✅ Búsqueda completada para ${phoneOrEmail}: ${freshNews.length} noticias encontradas`);
         } else {
-          console.log(`⚠️ No se pudieron obtener noticias para ${phoneOrEmail}: ${newsResult.error}`);
+          console.log(`⚠️ Búsqueda sin resultados para ${phoneOrEmail}: ${newsSearchResult.error}`);
         }
 
-        // Preparar contenido del mensaje
+        // **PASO 2: PREPARAR Y ENVIAR MENSAJE CON NOTICIAS FRESCAS**
+        console.log('📧 PASO 2: Preparando y enviando mensaje...');
+        
         let messageContent = '';
         if (type === 'whatsapp') {
-          messageContent = formatNewsForWhatsApp(availableNews);
+          messageContent = formatNewsForWhatsApp(freshNews);
         } else {
-          messageContent = formatNewsForEmail(availableNews);
+          messageContent = formatNewsForEmail(freshNews);
         }
 
         let sendResult = { success: false, error: 'Método no implementado' };
@@ -488,7 +556,7 @@ serve(async (req) => {
               text: messageContent
             };
 
-            console.log(`📤 Enviando WhatsApp con payload:`, whatsappPayload);
+            console.log(`📤 Enviando WhatsApp con ${freshNews.length} noticias`);
 
             const response = await fetch(`${whatsappConfigs.evolution_api_url.trim()}/message/sendText/${instanceName}`, {
               method: 'POST',
@@ -516,7 +584,7 @@ serve(async (req) => {
           }
 
         } else {
-          // Procesamiento de Email CORREGIDO
+          // Procesamiento de Email
           const { data: emailConfigs, error: configError } = await supabase
             .from('user_email_configs')
             .select('*')
@@ -528,11 +596,11 @@ serve(async (req) => {
           }
 
           try {
-            console.log('📧 Configuración email encontrada, enviando...');
+            console.log(`📧 Enviando email con ${freshNews.length} noticias`);
             
             const emailPayload = {
               to: phoneOrEmail,
-              subject: availableNews.length === 0 ? "Sin noticias nuevas - News Radar" : "Noticias Monitoreadas - News Radar",
+              subject: freshNews.length === 0 ? "Monitoreo Automático - News Radar" : "Noticias Actualizadas Automáticamente - News Radar",
               html: messageContent,
               smtpConfig: {
                 host: emailConfigs.smtp_host,
@@ -542,8 +610,6 @@ serve(async (req) => {
                 useTLS: emailConfigs.use_tls !== false
               }
             };
-
-            console.log('📧 Invocando función send-email-smtp...');
 
             const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-email-smtp', {
               body: emailPayload
@@ -565,7 +631,7 @@ serve(async (req) => {
         // Registrar resultado
         if (sendResult.success) {
           successCount++;
-          console.log(`✅ ENVIADO: ${phoneOrEmail}`);
+          console.log(`✅ ENVIADO EXITOSAMENTE: ${phoneOrEmail} con ${freshNews.length} noticias`);
 
           // Actualizar last_sent
           await supabase
@@ -575,7 +641,7 @@ serve(async (req) => {
 
         } else {
           errorCount++;
-          console.log(`❌ ERROR: ${phoneOrEmail} - ${sendResult.error}`);
+          console.log(`❌ ERROR ENVIANDO: ${phoneOrEmail} - ${sendResult.error}`);
           errors.push(`${phoneOrEmail}: ${sendResult.error}`);
         }
 
@@ -585,7 +651,7 @@ serve(async (req) => {
           subscription_id: subscription.id,
           [type === 'whatsapp' ? 'phone_number' : 'email_address']: phoneOrEmail,
           message_content: messageContent,
-          news_count: availableNews.length,
+          news_count: freshNews.length,
           status: sendResult.success ? 'sent' : 'failed',
           error_message: sendResult.success ? null : sendResult.error,
           execution_type: scheduled ? 'scheduled' : 'immediate'
@@ -617,19 +683,21 @@ serve(async (req) => {
       }
     }
 
-    console.log(`📊 RESUMEN FINAL:`);
-    console.log(`  ✅ Exitosos: ${successCount}`);
+    console.log(`📊 RESUMEN FINAL MEJORADO:`);
+    console.log(`  🔍 Búsquedas ejecutadas: ${subscriptionsToProcess.length}`);
+    console.log(`  📰 Noticias actualizadas: ${totalNewsUpdated}`);
+    console.log(`  ✅ Envíos exitosos: ${successCount}`);
     console.log(`  ❌ Errores: ${errorCount}`);
 
     const response = {
       success: true,
-      message: `Procesado: ${successCount} exitosos, ${errorCount} errores`,
+      message: `Proceso automático completado: ${successCount} enviados, ${errorCount} errores`,
       results: {
         sent: successCount,
         errors: errorCount,
         total: subscriptionsToProcess.length,
         errorDetails: errors,
-        newsUpdated: true,
+        newsUpdated: totalNewsUpdated,
         searchExecuted: true,
         timestamp: new Date().toISOString()
       }
