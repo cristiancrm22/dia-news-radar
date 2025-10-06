@@ -120,34 +120,44 @@ async function getNewsWithUserParameters(userId: string): Promise<any[]> {
       console.log("⚠️ Error conectando con servidor Python:", pythonError);
     }
 
-    // **PASO 6: FALLBACK A RADAR_LOGS PARA OBTENER NOTICIAS RECIENTES**
+    // **PASO 6: FALLBACK A RADAR_LOGS PARA OBTENER NOTICIAS RECIENTES (<= 15 min)**
     try {
       const { data: radarLogs } = await supabase
         .from('radar_logs')
-        .select('results')
+        .select('results, created_at')
+        .eq('user_id', userId)
         .eq('status', 'completed')
         .not('results', 'is', null)
         .order('created_at', { ascending: false })
         .limit(1);
 
       if (radarLogs && radarLogs.length > 0 && radarLogs[0].results) {
-        const results = radarLogs[0].results as any;
-        if (results.news && Array.isArray(results.news) && results.news.length > 0) {
-          console.log(`📰 Noticias desde radar_logs: ${results.news.length}`);
-          
-          // Filtrar noticias por palabras clave del usuario
-          let filteredNews = results.news;
-          if (userKeywords.length > 0) {
-            filteredNews = results.news.filter((item: any) => {
-              const text = `${item.title} ${item.summary || item.description || ''}`.toLowerCase();
-              return userKeywords.some(keyword => 
-                text.includes(keyword.toLowerCase())
-              );
-            });
-            console.log(`🔍 Noticias filtradas por palabras clave: ${filteredNews.length}`);
+        const latest = radarLogs[0];
+        const logTime = new Date(latest.created_at).getTime();
+        const now = new Date().getTime();
+        const minutesDiff = (now - logTime) / (1000 * 60);
+
+        if (minutesDiff <= 15) {
+          const results = latest.results as any;
+          if (results.news && Array.isArray(results.news) && results.news.length > 0) {
+            console.log(`📰 Noticias desde radar_logs (cache ${minutesDiff.toFixed(1)} min): ${results.news.length}`);
+            
+            // Filtrar noticias por palabras clave del usuario
+            let filteredNews = results.news;
+            if (userKeywords.length > 0) {
+              filteredNews = results.news.filter((item: any) => {
+                const text = `${item.title} ${item.summary || item.description || ''}`.toLowerCase();
+                return userKeywords.some(keyword => 
+                  text.includes(keyword.toLowerCase())
+                );
+              });
+              console.log(`🔍 Noticias filtradas por palabras clave: ${filteredNews.length}`);
+            }
+            
+            return filteredNews;
           }
-          
-          return filteredNews;
+        } else {
+          console.log(`⏰ Cache radar_logs no apto (${minutesDiff.toFixed(1)} min)`);
         }
       }
     } catch (supabaseError) {

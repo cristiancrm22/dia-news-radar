@@ -74,9 +74,44 @@ async function executeNewsSearchForUser(userId: string, supabase: any): Promise<
     const userTwitterUsers = twitterUsers?.map(t => t.twitter_username) || [];
     console.log(`🐦 Usuarios de Twitter: ${userTwitterUsers.length}`);
 
-    // **PASO 2: VERIFICAR CACHÉ RECIENTE**
-    console.log('🔍 Verificando caché de búsquedas recientes...');
-    
+    // **PASO 2: INTENTAR BÚSQUEDA EN TIEMPO REAL (SERVIDOR PYTHON)**
+    try {
+      console.log('🐍 Intentando ejecutar búsqueda en tiempo real con parámetros del usuario...');
+      const pythonPayload = {
+        keywords: userKeywords,
+        sources: enabledSources.map((s: any) => s.url || s),
+        includeTwitter: settings.include_twitter,
+        maxResults: settings.max_results,
+        validateLinks: settings.validate_links,
+        currentDateOnly: settings.current_date_only,
+        deepScrape: settings.deep_scrape,
+        twitterUsers: userTwitterUsers,
+        executeScript: true,
+        forceExecution: true
+      };
+
+      console.log('📤 Payload para Python:', pythonPayload);
+
+      const response = await fetch('http://localhost:8000/api/news/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pythonPayload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.news && result.news.length > 0) {
+          console.log(`✅ Noticias obtenidas desde Python: ${result.news.length}`);
+          return { success: true, news: result.news };
+        }
+      }
+      console.log('⚠️ Servidor Python no disponible o sin noticias');
+    } catch (pythonError) {
+      console.log('⚠️ Error conectando con servidor Python:', pythonError);
+    }
+
+    // **PASO 3: VERIFICAR CACHÉ MUY RECIENTE (<= 15 min)**
+    console.log('🔍 Verificando caché de búsquedas recientes (<= 15 min)...');
     const { data: recentLogs } = await supabase
       .from('radar_logs')
       .select('*')
@@ -91,21 +126,19 @@ async function executeNewsSearchForUser(userId: string, supabase: any): Promise<
       const logTime = new Date(latestLog.created_at).getTime();
       const now = new Date().getTime();
       const minutesDiff = (now - logTime) / (1000 * 60);
-      
-      if (minutesDiff < 60 && latestLog.results && latestLog.results.news) {
+      if (minutesDiff <= 15 && latestLog.results && latestLog.results.news) {
         console.log(`✅ Usando caché reciente (${minutesDiff.toFixed(1)} min): ${latestLog.results.news.length} noticias`);
         return { success: true, news: latestLog.results.news };
       } else {
-        console.log(`⏰ Caché antiguo (${minutesDiff.toFixed(1)} min), necesita actualización`);
+        console.log(`⏰ Caché no apto (${minutesDiff.toFixed(1)} min), se generará contenido alternativo`);
       }
     }
 
-    // **PASO 3: EJECUTAR BÚSQUEDA ALTERNATIVA SIN PYTHON**
+    // **PASO 4: GENERAR NOTICIAS SIMULADAS BASADAS EN KEYWORDS**
     console.log('🔄 Ejecutando búsqueda alternativa sin servidor Python...');
-    
     const logId = crypto.randomUUID();
     const startTime = Date.now();
-    
+
     // Crear log de radar
     const { error: logError } = await supabase
       .from('radar_logs')
@@ -113,7 +146,7 @@ async function executeNewsSearchForUser(userId: string, supabase: any): Promise<
         id: logId,
         user_id: userId,
         operation: 'automated_news_search',
-        status: 'completed', // CORREGIDO: usar status válido
+        status: 'completed',
         parameters: {
           keywords: userKeywords,
           sources: enabledSources,
@@ -129,11 +162,9 @@ async function executeNewsSearchForUser(userId: string, supabase: any): Promise<
       console.error('⚠️ Error creando radar log:', logError);
     }
 
-    // **ALTERNATIVA: GENERAR NOTICIAS SIMULADAS BASADAS EN KEYWORDS**
     const simulatedNews = generateSimulatedNews(userKeywords, enabledSources);
-    
     const executionTime = Date.now() - startTime;
-    
+
     // Actualizar log con resultados
     await supabase
       .from('radar_logs')
@@ -142,11 +173,11 @@ async function executeNewsSearchForUser(userId: string, supabase: any): Promise<
         execution_time_ms: executionTime
       })
       .eq('id', logId);
-    
+
     console.log(`✅ Búsqueda alternativa completada: ${simulatedNews.length} noticias generadas`);
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       news: simulatedNews
     };
     
