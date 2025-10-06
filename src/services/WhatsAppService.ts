@@ -208,31 +208,81 @@ export class WhatsAppService {
     }
   }
 
-  // NUEVO: Método para obtener noticias del sistema principal
+  // NUEVO: Método para obtener noticias del sistema principal FORZANDO actualización
   private static async getTodayNewsFromMainSystem(
     onLog?: (type: 'info' | 'error' | 'success', message: string, details?: any) => void
   ): Promise<any[]> {
     try {
-      onLog?.('info', 'Obteniendo noticias del sistema principal...');
-      
-      // Primero intentar obtener noticias ya procesadas
-      const response = await fetch("http://localhost:8000/api/news/today");
-      
-      if (response.ok) {
-        const data = await response.json();
-        onLog?.('info', `Noticias obtenidas del cache: ${data.news?.length || 0}`);
-        if (data.news && data.news.length > 0) {
-          return data.news;
-        }
-      }
-      
-      // Si no hay noticias en cache, usar el servicio principal
+      onLog?.('info', 'Obteniendo noticias del sistema principal (forzando actualización)...');
+
+      // 1) Cargar parámetros del usuario
       const NewsService = (await import('./NewsService')).default;
-      const newsFromService = await NewsService.getNews();
-      onLog?.('info', `Noticias del servicio principal: ${newsFromService.length}`);
-      
-      return newsFromService;
-      
+      const settings = await NewsService.getSearchSettings();
+      const enabledSources = (await NewsService.getSources()).filter((s: any) => s.enabled);
+      const twitterUsers = await NewsService.getTwitterUsers();
+
+      // 2) Forzar actualización en el servidor Python antes de leer cache
+      try {
+        const refreshPayload = {
+          keywords: settings.keywords || [],
+          sources: enabledSources.map((s: any) => s.url),
+          includeTwitter: settings.includeTwitter,
+          maxResults: settings.maxResults,
+          validateLinks: settings.validateLinks,
+          currentDateOnly: settings.currentDateOnly,
+          deepScrape: settings.deepScrape,
+          twitterUsers,
+          executeScript: true,
+          forceExecution: true
+        };
+        onLog?.('info', 'Forzando búsqueda en Python con parámetros actuales', refreshPayload);
+
+        const refreshResp = await fetch('http://localhost:8000/api/news/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(refreshPayload)
+        });
+
+        if (refreshResp.ok) {
+          const refreshData = await refreshResp.json();
+          if (refreshData.news && Array.isArray(refreshData.news) && refreshData.news.length > 0) {
+            onLog?.('success', `Búsqueda completada: ${refreshData.news.length} noticias nuevas`);
+            return refreshData.news;
+          }
+          onLog?.('info', 'Búsqueda forzada sin resultados, se intentará cache/local');
+        } else {
+          onLog?.('error', `Error HTTP al forzar búsqueda: ${refreshResp.status} ${refreshResp.statusText}`);
+        }
+      } catch (forceErr: any) {
+        onLog?.('error', `Error forzando búsqueda en Python: ${forceErr.message}`);
+      }
+
+      // 3) Intentar cache local (por si el backend ya dejó resultados recientes)
+      try {
+        const response = await fetch('http://localhost:8000/api/news/today');
+        if (response.ok) {
+          const data = await response.json();
+          onLog?.('info', `Noticias obtenidas del cache: ${data.news?.length || 0}`);
+          if (data.news && data.news.length > 0) {
+            return data.news;
+          }
+        }
+      } catch (localError: any) {
+        onLog?.('error', `Cache local no disponible: ${localError.message}`);
+      }
+
+      // 4) Último recurso: usar el servicio principal para ejecutar la búsqueda completa
+      try {
+        const newsFromService = await NewsService.getNews();
+        onLog?.('info', `Noticias del servicio principal: ${newsFromService.length}`);
+        return newsFromService;
+      } catch (serviceError: any) {
+        onLog?.('error', `Servicio principal no disponible: ${serviceError.message}`);
+      }
+
+      onLog?.('info', 'No hay noticias disponibles de ninguna fuente');
+      return [];
+
     } catch (error: any) {
       onLog?.('error', `Error obteniendo noticias: ${error.message}`);
       return [];
